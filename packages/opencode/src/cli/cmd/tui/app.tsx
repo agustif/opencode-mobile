@@ -31,6 +31,7 @@ import { KVProvider, useKV } from "./context/kv"
 import { Provider } from "@/provider/provider"
 import { ArgsProvider, useArgs, type Args } from "./context/args"
 import open from "open"
+import { Permission } from "./component/dialog-permission"
 
 async function getTerminalBackgroundColor(): Promise<"dark" | "light"> {
   // can't set raw mode if not a TTY
@@ -462,6 +463,7 @@ function App() {
         }
       }}
     >
+      <Permission />
       <Switch>
         <Match when={route.data.type === "home"}>
           <Home />
