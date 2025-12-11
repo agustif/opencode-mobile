@@ -407,6 +407,13 @@ export namespace Provider {
       key: z.string().optional(),
       options: z.record(z.string(), z.any()),
       models: z.record(z.string(), Model),
+      healthCheck: z
+        .object({
+          url: z.string().optional(),
+          timeout: z.number().int().positive().optional(),
+          enabled: z.boolean().optional(),
+        })
+        .optional(),
     })
     .meta({
       ref: "Provider",
@@ -484,6 +491,27 @@ export namespace Provider {
     }
   }
 
+  async function checkProviderHealth(
+    baseURL: string,
+    healthCheck?: { url?: string; timeout?: number; enabled?: boolean },
+  ): Promise<{ healthy: boolean; error?: string }> {
+    if (healthCheck?.enabled === false) return { healthy: true }
+
+    const url = healthCheck?.url ?? `${baseURL.replace(/\/$/, "")}/models`
+    const timeout = healthCheck?.timeout ?? 2000
+
+    try {
+      const response = await fetch(url, {
+        method: "GET",
+        signal: AbortSignal.timeout(timeout),
+      })
+      return { healthy: response.ok }
+    } catch (e) {
+      const error = e instanceof Error ? e.message : String(e)
+      return { healthy: false, error }
+    }
+  }
+
   const state = Instance.state(async () => {
     using _ = log.time("state")
     const config = await Config.get()
@@ -505,6 +533,7 @@ export namespace Provider {
       [providerID: string]: CustomModelLoader
     } = {}
     const sdk = new Map<number, SDK>()
+    const healthCheckResults = new Map<string, { healthy: boolean; error?: string }>()
 
     log.info("init")
 
@@ -547,6 +576,7 @@ export namespace Provider {
         options: mergeDeep(existing?.options ?? {}, provider.options ?? {}),
         source: "config",
         models: existing?.models ?? {},
+        healthCheck: provider.healthCheck ?? existing?.healthCheck,
       }
 
       for (const [modelID, model] of Object.entries(provider.models ?? {})) {
@@ -742,6 +772,7 @@ export namespace Provider {
       providers,
       sdk,
       modelLoaders,
+      healthCheckResults,
     }
   })
 
@@ -769,6 +800,23 @@ export namespace Provider {
           ...options["headers"],
           ...model.headers,
         }
+
+      const baseURL = options["baseURL"] || model.api.url
+      const isLocal = baseURL?.includes("127.0.0.1") || baseURL?.includes("localhost")
+      const healthCheckConfig = provider.healthCheck
+
+      if ((isLocal || healthCheckConfig?.enabled !== false) && !s.healthCheckResults.has(model.providerID)) {
+        const health = await checkProviderHealth(baseURL, healthCheckConfig)
+        s.healthCheckResults.set(model.providerID, health)
+
+        if (!health.healthy) {
+          log.warn("provider health check failed", {
+            providerID: model.providerID,
+            baseURL,
+            error: health.error,
+          })
+        }
+      }
 
       const key = Bun.hash.xxHash32(JSON.stringify({ npm: model.api.npm, options }))
       const existing = s.sdk.get(key)
@@ -988,6 +1036,15 @@ export namespace Provider {
     "ProviderInitError",
     z.object({
       providerID: z.string(),
+    }),
+  )
+
+  export const HealthCheckError = NamedError.create(
+    "ProviderHealthCheckError",
+    z.object({
+      providerID: z.string(),
+      baseURL: z.string().optional(),
+      error: z.string(),
     }),
   )
 }
