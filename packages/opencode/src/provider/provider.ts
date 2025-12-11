@@ -750,6 +750,7 @@ export namespace Provider {
   }
 
   async function getSDK(model: Model) {
+    let baseURL: string | undefined
     try {
       using _ = log.time("getSDK", {
         providerID: model.providerID,
@@ -763,6 +764,7 @@ export namespace Provider {
       }
 
       if (!options["baseURL"]) options["baseURL"] = model.api.url
+      baseURL = options["baseURL"] || model.api.url
       if (options["apiKey"] === undefined && provider.key) options["apiKey"] = provider.key
       if (model.headers)
         options["headers"] = {
@@ -830,9 +832,6 @@ export namespace Provider {
       s.sdk.set(key, loaded)
       return loaded as SDK
     } catch (e) {
-      const provider = s.providers[model.providerID]
-      const providerOptions = { ...provider.options }
-      const baseURL = providerOptions["baseURL"] || model.api.url
       throw new InitError({ providerID: model.providerID, baseURL }, { cause: e })
     }
   }
