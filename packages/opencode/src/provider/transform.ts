@@ -403,13 +403,65 @@ export namespace ProviderTransform {
     return schema
   }
 
+  function isLocalProvider(providerID: string, baseURL?: string): boolean {
+    if (!baseURL) return false
+    return (
+      baseURL.includes("127.0.0.1") ||
+      baseURL.includes("localhost") ||
+      baseURL.startsWith("http://127.0.0.1") ||
+      baseURL.startsWith("http://localhost")
+    )
+  }
+
+  function getLocalProviderHints(providerID: string, baseURL?: string): string[] {
+    const hints: string[] = []
+
+    if (providerID === "lmstudio" || baseURL?.includes("1234")) {
+      hints.push("Is LM Studio running?")
+      hints.push(`Check if the server is accessible at ${baseURL || "http://127.0.0.1:1234/v1"}`)
+      hints.push("Verify the port number in your configuration (default: 1234)")
+      hints.push("See: https://lmstudio.ai/docs")
+    } else {
+      hints.push("Is the local server running?")
+      hints.push(`Check if the server is accessible at ${baseURL || "the configured baseURL"}`)
+      hints.push("Verify the port number in your configuration")
+    }
+
+    return hints
+  }
+
+  function extractBaseURLFromError(error: APICallError): string | undefined {
+    const message = error.message
+    const urlMatch = message.match(/https?:\/\/[^\s]+/)
+    if (urlMatch) return urlMatch[0]
+    if (message.includes("ECONNREFUSED") || message.includes("fetch failed")) {
+      const localhostMatch = message.match(/127\.0\.0\.1:\d+|localhost:\d+/)
+      if (localhostMatch) return `http://${localhostMatch[0]}`
+    }
+    return undefined
+  }
+
   export function error(providerID: string, error: APICallError) {
     let message = error.message
+
     if (providerID === "github-copilot" && message.includes("The requested model is not supported")) {
       return (
         message +
         "\n\nMake sure the model is enabled in your copilot settings: https://github.com/settings/copilot/features"
       )
+    }
+
+    const baseURL = extractBaseURLFromError(error)
+    if (isLocalProvider(providerID, baseURL)) {
+      if (message.includes("ECONNREFUSED") || message.includes("fetch failed") || message.includes("network")) {
+        const hints = getLocalProviderHints(providerID, baseURL)
+        return [
+          message,
+          "",
+          "Local provider connection failed:",
+          ...hints.map((hint) => `  • ${hint}`),
+        ].join("\n")
+      }
     }
 
     return message

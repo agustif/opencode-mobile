@@ -830,7 +830,10 @@ export namespace Provider {
       s.sdk.set(key, loaded)
       return loaded as SDK
     } catch (e) {
-      throw new InitError({ providerID: model.providerID }, { cause: e })
+      const provider = s.providers[model.providerID]
+      const providerOptions = { ...provider.options }
+      const baseURL = providerOptions["baseURL"] || model.api.url
+      throw new InitError({ providerID: model.providerID, baseURL }, { cause: e })
     }
   }
 
@@ -988,6 +991,7 @@ export namespace Provider {
     "ProviderInitError",
     z.object({
       providerID: z.string(),
+      baseURL: z.string().optional(),
     }),
   )
 }
