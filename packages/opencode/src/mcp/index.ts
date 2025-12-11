@@ -407,7 +407,9 @@ export namespace MCP {
       for (const [toolName, tool] of Object.entries(tools)) {
         const sanitizedClientName = clientName.replace(/[^a-zA-Z0-9_-]/g, "_")
         const sanitizedToolName = toolName.replace(/[^a-zA-Z0-9_-]/g, "_")
-        result[sanitizedClientName + "_" + sanitizedToolName] = tool
+        // MCP tools have FlexibleSchema<unknown> but Tool expects FlexibleSchema<any>
+        // This is safe as the schema is validated at runtime
+        result[sanitizedClientName + "_" + sanitizedToolName] = tool as Tool
       }
     }
     return result
