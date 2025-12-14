@@ -82,22 +82,24 @@ export function DialogPlugins() {
           <For each={enabledPlugins()}>
             {(plugin) => (
               <box flexDirection="row" gap={1} alignItems="flex-start" paddingBottom={1} paddingTop={0.5}>
-                <text flexShrink={0} style={{ fg: plugin.disabled ? theme.textMuted : theme.success }} attributes={TextAttributes.BOLD}>
-                  {plugin.disabled ? "○" : "●"}
-                </text>
-                <box flexDirection="column" gap={0.5} flexGrow={1}>
-                  <box flexDirection="row" gap={1} alignItems="center">
-                    <text fg={plugin.disabled ? theme.textMuted : theme.text} attributes={TextAttributes.BOLD}>
+                <box flexShrink={0} width={2} alignItems="center" justifyContent="flex-start">
+                  <text style={{ fg: plugin.disabled ? theme.textMuted : theme.success }} attributes={TextAttributes.BOLD}>
+                    {plugin.disabled ? "◯" : "●"}
+                  </text>
+                </box>
+                <box flexDirection="column" gap={0.5} flexGrow={1} paddingLeft={0}>
+                  <box flexDirection="row" gap={1} alignItems="center" paddingLeft={0}>
+                    <text fg={plugin.disabled ? theme.textMuted : theme.text} attributes={TextAttributes.BOLD} paddingLeft={0}>
                       {plugin.name}
                     </text>
                     <Show when={plugin.version}>
-                      <text fg={theme.textMuted}>
+                      <text fg={theme.textMuted} paddingLeft={0}>
                         v{plugin.version}
                       </text>
                     </Show>
                   </box>
                   <Show when={plugin.isFile && plugin.path}>
-                    <text fg={theme.textMuted} style={{ fg: theme.textMuted }}>
+                    <text fg={theme.textMuted} paddingLeft={0}>
                       {plugin.path}
                     </text>
                   </Show>
