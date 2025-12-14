@@ -45,9 +45,9 @@ export function DialogPlugins() {
         let source: "global" | "project" | "system" = "global"
         const isSystemPlugin = defaultPlugins.includes(pluginSpec)
         
-        // Check if enabled: system plugins are always enabled, others check if in config.plugin array
-        // Use exact match since config stores resolved URLs
-        const isEnabled = isSystemPlugin || plugins.some(p => p === pluginSpec)
+        // Check if enabled: system plugins are always enabled
+        // Others are enabled if in plugin array AND not in disabled_plugins array
+        const isEnabled = isSystemPlugin || (enabledSet.has(pluginSpec) && !disabledSet.has(pluginSpec))
         
         // Handle file:// paths
         if (pluginSpec.startsWith("file://")) {
