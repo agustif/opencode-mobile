@@ -48,6 +48,7 @@ import { Header } from "./header"
 import { parsePatch } from "diff"
 import { useDialog } from "../../ui/dialog"
 import { DialogMessage } from "./dialog-message"
+import { DialogPlugins } from "./dialog-plugins"
 import type { PromptInfo } from "../../component/prompt/history"
 import { iife } from "@/util/iife"
 import { DialogConfirm } from "@tui/ui/dialog-confirm"
@@ -403,6 +404,14 @@ export function Session() {
         if (sidebar() === "show") kv.set("sidebar", "auto")
         if (sidebar() === "hide") kv.set("sidebar", "hide")
         dialog.clear()
+      },
+    },
+    {
+      title: "List plugins",
+      value: "plugins.list",
+      category: "Plugins",
+      onSelect: (dialog) => {
+        dialog.replace(() => <DialogPlugins />)
       },
     },
     {

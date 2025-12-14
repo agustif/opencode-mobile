@@ -13,6 +13,7 @@ import { SyncProvider, useSync } from "@tui/context/sync"
 import { LocalProvider, useLocal } from "@tui/context/local"
 import { DialogModel, useConnected } from "@tui/component/dialog-model"
 import { DialogMcp } from "@tui/component/dialog-mcp"
+import { DialogPlugins } from "./routes/session/dialog-plugins"
 import { DialogStatus } from "@tui/component/dialog-status"
 import { DialogThemeList } from "@tui/component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
@@ -310,6 +311,14 @@ function App() {
       category: "Agent",
       onSelect: () => {
         dialog.replace(() => <DialogMcp />)
+      },
+    },
+    {
+      title: "List plugins",
+      value: "plugins.list",
+      category: "Plugins",
+      onSelect: () => {
+        dialog.replace(() => <DialogPlugins />)
       },
     },
     {
