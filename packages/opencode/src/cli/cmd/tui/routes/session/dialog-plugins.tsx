@@ -1,5 +1,5 @@
 import { useSync } from "@tui/context/sync"
-import { createMemo, For, Show } from "solid-js"
+import { createMemo, For, Show, onMount } from "solid-js"
 import { useTheme } from "@tui/context/theme"
 import { useDialog } from "@tui/ui/dialog"
 import { TextAttributes } from "@opentui/core"
@@ -8,6 +8,11 @@ export function DialogPlugins() {
   const sync = useSync()
   const { theme } = useTheme()
   const dialog = useDialog()
+
+  // Set dialog to large size for wider display
+  onMount(() => {
+    dialog.setSize("large")
+  })
 
   const enabledPlugins = createMemo(() => {
     try {
@@ -23,7 +28,7 @@ export function DialogPlugins() {
         const atIndex = pluginSpec.lastIndexOf("@")
         const name = atIndex > 0 ? pluginSpec.substring(0, atIndex) : pluginSpec
         const version = atIndex > 0 ? pluginSpec.substring(atIndex + 1) : undefined
-        return { name, version }
+        return { name, version, spec: pluginSpec }
       })
     } catch {
       return []
@@ -31,8 +36,8 @@ export function DialogPlugins() {
   })
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between">
+    <box paddingLeft={3} paddingRight={3} paddingTop={1} paddingBottom={2} gap={1}>
+      <box flexDirection="row" justifyContent="space-between" paddingBottom={1}>
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           Enabled Plugins
         </text>
@@ -45,14 +50,23 @@ export function DialogPlugins() {
         <Show when={enabledPlugins().length > 0}>
           <For each={enabledPlugins()}>
             {(plugin) => (
-              <box flexDirection="row" gap={1} paddingBottom={1}>
-                <text flexShrink={0} style={{ fg: theme.success }}>•</text>
-                <text fg={theme.text}>
-                  {plugin.name}
+              <box flexDirection="column" gap={0.5} paddingBottom={1.5} paddingTop={0.5}>
+                <box flexDirection="row" gap={1} alignItems="center">
+                  <text flexShrink={0} style={{ fg: theme.success }}>•</text>
+                  <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                    {plugin.name}
+                  </text>
                   <Show when={plugin.version}>
-                    <span style={{ fg: theme.textMuted }}>@{plugin.version}</span>
+                    <text fg={theme.textMuted} style={{ fg: theme.textMuted }}>
+                      v{plugin.version}
+                    </text>
                   </Show>
-                </text>
+                </box>
+                <box paddingLeft={2}>
+                  <text fg={theme.textMuted} style={{ fg: theme.textMuted }}>
+                    {plugin.spec}
+                  </text>
+                </box>
               </box>
             )}
           </For>
