@@ -866,6 +866,14 @@ export function Prompt(props: PromptProps) {
                   <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
                 </box>
               </Show>
+              <box flexDirection="row" gap={0.5} alignItems="center">
+                <Show when={platform() === "darwin"}>
+                  <text fg={highlight()}>⇥</text>
+                </Show>
+                <text fg={highlight()}>
+                  {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}
+                </text>
+              </box>
             </box>
           </box>
         </box>
@@ -974,12 +982,17 @@ export function Prompt(props: PromptProps) {
             </box>
           </Show>
           <Show when={status().type !== "retry"}>
-            <box gap={2} flexDirection="row">
+            <box gap={2} flexDirection="row" justifyContent="space-between">
               <Switch>
                 <Match when={store.mode === "normal"}>
-                  <text fg={theme.text}>
-                    {keybind.print("agent_cycle")} <span style={{ fg: theme.textMuted }}>switch agent</span>
-                  </text>
+                  <box flexDirection="row" gap={0.5} alignItems="center">
+                    <Show when={platform() === "darwin"}>
+                      <text fg={theme.text}>⇥</text>
+                    </Show>
+                    <text fg={theme.text}>
+                      {keybind.print("agent_cycle")} <span style={{ fg: theme.textMuted }}>switch agent</span>
+                    </text>
+                  </box>
                   <text fg={theme.text}>
                     {keybind.print("command_list")} <span style={{ fg: theme.textMuted }}>commands</span>
                   </text>
