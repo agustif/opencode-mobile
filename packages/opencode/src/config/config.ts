@@ -955,9 +955,29 @@ export namespace Config {
   }
 
   export async function update(config: Info) {
-    const filepath = path.join(Instance.directory, "config.json")
-    const existing = await loadFile(filepath)
-    await Bun.write(filepath, JSON.stringify(mergeDeep(existing, config), null, 2))
+    // Find existing config file or create new one
+    let filepath: string
+    const jsoncPath = path.join(Instance.directory, "opencode.jsonc")
+    const jsonPath = path.join(Instance.directory, "opencode.json")
+    
+    // Check if opencode.jsonc exists
+    try {
+      await fs.access(jsoncPath)
+      filepath = jsoncPath
+    } catch {
+      // Check if opencode.json exists
+      try {
+        await fs.access(jsonPath)
+        filepath = jsonPath
+      } catch {
+        // Neither exists, create opencode.jsonc
+        filepath = jsoncPath
+      }
+    }
+    
+    const existing = await loadFile(filepath).catch(() => ({} as Info))
+    const merged = mergeDeep(existing, config)
+    await Bun.write(filepath, JSON.stringify(merged, null, 2))
     await Instance.dispose()
   }
 

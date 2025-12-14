@@ -26,12 +26,15 @@ export namespace Plugin {
       directory: Instance.directory,
       $: Bun.$,
     }
+    const disabledPlugins = new Set((config as any).disabled_plugins ?? [])
     const plugins = [...(config.plugin ?? [])]
     if (!Flag.OPENCODE_DISABLE_DEFAULT_PLUGINS) {
       plugins.push("opencode-copilot-auth@0.0.9")
       plugins.push("opencode-anthropic-auth@0.0.5")
     }
-    for (let plugin of plugins) {
+    // Filter out disabled plugins
+    const enabledPlugins = plugins.filter((plugin) => !disabledPlugins.has(plugin))
+    for (let plugin of enabledPlugins) {
       log.info("loading plugin", { path: plugin })
       if (!plugin.startsWith("file://")) {
         const lastAtIndex = plugin.lastIndexOf("@")
