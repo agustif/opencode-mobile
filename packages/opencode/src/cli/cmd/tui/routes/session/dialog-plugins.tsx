@@ -25,10 +25,28 @@ export function DialogPlugins() {
       const allPlugins = [...plugins, ...defaultPlugins]
       const uniquePlugins = Array.from(new Set(allPlugins))
       return uniquePlugins.map((pluginSpec) => {
+        // Handle file:// paths
+        if (pluginSpec.startsWith("file://")) {
+          const path = pluginSpec.replace("file://", "")
+          const pathParts = path.split("/")
+          const filename = pathParts[pathParts.length - 1] || path
+          const nameWithoutExt = filename.replace(/\.(ts|js|mjs|cjs)$/, "")
+          // Extract directory name for context (e.g., "plugin" from .../plugin/filename.ts)
+          const dirName = pathParts.length > 1 ? pathParts[pathParts.length - 2] : ""
+          return {
+            name: nameWithoutExt,
+            version: undefined,
+            spec: pluginSpec,
+            isFile: true,
+            path: path,
+            dirName: dirName,
+          }
+        }
+        // Handle npm package format (name@version)
         const atIndex = pluginSpec.lastIndexOf("@")
         const name = atIndex > 0 ? pluginSpec.substring(0, atIndex) : pluginSpec
         const version = atIndex > 0 ? pluginSpec.substring(atIndex + 1) : undefined
-        return { name, version, spec: pluginSpec }
+        return { name, version, spec: pluginSpec, isFile: false }
       })
     } catch {
       return []
@@ -50,22 +68,24 @@ export function DialogPlugins() {
         <Show when={enabledPlugins().length > 0}>
           <For each={enabledPlugins()}>
             {(plugin) => (
-              <box flexDirection="column" gap={0.5} paddingBottom={1.5} paddingTop={0.5}>
-                <box flexDirection="row" gap={1} alignItems="center">
-                  <text flexShrink={0} style={{ fg: theme.success }}>•</text>
-                  <text fg={theme.text} attributes={TextAttributes.BOLD}>
-                    {plugin.name}
-                  </text>
-                  <Show when={plugin.version}>
+              <box flexDirection="row" gap={1} alignItems="center" paddingBottom={1} paddingTop={0.5}>
+                <text flexShrink={0} style={{ fg: theme.success }}>•</text>
+                <box flexDirection="column" gap={0.5} flexGrow={1}>
+                  <box flexDirection="row" gap={1} alignItems="center">
+                    <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                      {plugin.name}
+                    </text>
+                    <Show when={plugin.version}>
+                      <text fg={theme.textMuted}>
+                        v{plugin.version}
+                      </text>
+                    </Show>
+                  </box>
+                  <Show when={plugin.isFile}>
                     <text fg={theme.textMuted} style={{ fg: theme.textMuted }}>
-                      v{plugin.version}
+                      {plugin.path}
                     </text>
                   </Show>
-                </box>
-                <box paddingLeft={2}>
-                  <text fg={theme.textMuted} style={{ fg: theme.textMuted }}>
-                    {plugin.spec}
-                  </text>
                 </box>
               </box>
             )}
