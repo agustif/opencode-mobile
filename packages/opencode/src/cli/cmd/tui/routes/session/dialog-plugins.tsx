@@ -24,7 +24,7 @@ export function DialogPlugins() {
       ]
       const allPlugins = [...plugins, ...defaultPlugins]
       const uniquePlugins = Array.from(new Set(allPlugins))
-      return uniquePlugins.map((pluginSpec) => {
+      const mappedPlugins = uniquePlugins.map((pluginSpec) => {
         // Handle file:// paths
         if (pluginSpec.startsWith("file://")) {
           const path = pluginSpec.replace("file://", "")
@@ -40,14 +40,27 @@ export function DialogPlugins() {
             isFile: true,
             path: path,
             dirName: dirName,
+            disabled: false,
           }
         }
         // Handle npm package format (name@version)
         const atIndex = pluginSpec.lastIndexOf("@")
         const name = atIndex > 0 ? pluginSpec.substring(0, atIndex) : pluginSpec
         const version = atIndex > 0 ? pluginSpec.substring(atIndex + 1) : undefined
-        return { name, version, spec: pluginSpec, isFile: false }
+        return { name, version, spec: pluginSpec, isFile: false, disabled: false }
       })
+      // Add a dummy disabled plugin for testing
+      return [
+        ...mappedPlugins,
+        {
+          name: "opencode-example-disabled",
+          version: "0.0.1",
+          spec: "opencode-example-disabled@0.0.1",
+          isFile: false,
+          disabled: true,
+          path: undefined,
+        },
+      ]
     } catch {
       return []
     }
@@ -68,11 +81,13 @@ export function DialogPlugins() {
         <Show when={enabledPlugins().length > 0}>
           <For each={enabledPlugins()}>
             {(plugin) => (
-              <box flexDirection="row" gap={1} alignItems="center" paddingBottom={1} paddingTop={0.5}>
-                <text flexShrink={0} style={{ fg: theme.success }}>•</text>
+              <box flexDirection="row" gap={1} alignItems="flex-start" paddingBottom={1} paddingTop={0.5}>
+                <text flexShrink={0} style={{ fg: plugin.disabled ? theme.textMuted : theme.success }} attributes={TextAttributes.BOLD}>
+                  {plugin.disabled ? "○" : "●"}
+                </text>
                 <box flexDirection="column" gap={0.5} flexGrow={1}>
                   <box flexDirection="row" gap={1} alignItems="center">
-                    <text fg={theme.text} attributes={TextAttributes.BOLD}>
+                    <text fg={plugin.disabled ? theme.textMuted : theme.text} attributes={TextAttributes.BOLD}>
                       {plugin.name}
                     </text>
                     <Show when={plugin.version}>
@@ -81,7 +96,7 @@ export function DialogPlugins() {
                       </text>
                     </Show>
                   </box>
-                  <Show when={plugin.isFile}>
+                  <Show when={plugin.isFile && plugin.path}>
                     <text fg={theme.textMuted} style={{ fg: theme.textMuted }}>
                       {plugin.path}
                     </text>
