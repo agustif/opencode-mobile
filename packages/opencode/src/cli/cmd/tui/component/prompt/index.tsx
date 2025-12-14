@@ -27,6 +27,7 @@ import { useDialog } from "@tui/ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
 import { DialogAlert } from "../../ui/dialog-alert"
 import { useToast } from "../../ui/toast"
+import { platform } from "os"
 
 export type PromptProps = {
   sessionID?: string
@@ -848,10 +849,7 @@ export function Prompt(props: PromptProps) {
               cursorColor={theme.text}
               syntaxStyle={syntax()}
             />
-            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1}>
-              <text fg={highlight()}>
-                {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}{" "}
-              </text>
+            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="flex-end" alignItems="center">
               <Show when={store.mode === "normal"}>
                 <box flexDirection="row" gap={1}>
                   <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
@@ -860,6 +858,14 @@ export function Prompt(props: PromptProps) {
                   <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
                 </box>
               </Show>
+              <box flexDirection="row" gap={0.5} alignItems="center">
+                <Show when={platform() === "darwin"}>
+                  <text fg={highlight()}>⇥</text>
+                </Show>
+                <text fg={highlight()}>
+                  {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}
+                </text>
+              </box>
             </box>
           </box>
         </box>
