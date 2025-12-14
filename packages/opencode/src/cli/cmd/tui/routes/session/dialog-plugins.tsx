@@ -27,12 +27,15 @@ export function DialogPlugins() {
     try {
       const config = sync.data.config
       const plugins = config?.plugin || []
+      
+      // System plugins are always enabled, check if they're in config or are defaults
       const allPlugins = [...plugins, ...defaultPlugins]
       const uniquePlugins = Array.from(new Set(allPlugins))
       
       const mappedPlugins = uniquePlugins.map((pluginSpec) => {
         // Determine source: global vs project
         let source: "global" | "project" | "system" = "global"
+        const isSystemPlugin = defaultPlugins.includes(pluginSpec)
         
         // Handle file:// paths
         if (pluginSpec.startsWith("file://")) {
@@ -52,14 +55,17 @@ export function DialogPlugins() {
             source = pathStr.includes(".opencode") ? "project" : "global"
           }
           
+          // Check if enabled: system plugins are always enabled, others check config
+          const isEnabled = isSystemPlugin || plugins.includes(pluginSpec)
+          
           return {
             name: nameWithoutExt,
             version: undefined,
             spec: pluginSpec,
             isFile: true,
             path: path,
-            source,
-            disabled: false,
+            source: isSystemPlugin ? "system" : source,
+            isEnabled,
           }
         }
         
@@ -68,17 +74,17 @@ export function DialogPlugins() {
         const name = atIndex > 0 ? pluginSpec.substring(0, atIndex) : pluginSpec
         const version = atIndex > 0 ? pluginSpec.substring(atIndex + 1) : undefined
         
-        // Mark plugins with "disabled" in name as disabled (for testing)
-        const disabled = name.includes("disabled") || name.includes("-disabled")
-        
         // Default plugins are system, others are global (from config)
-        if (defaultPlugins.includes(pluginSpec)) {
+        if (isSystemPlugin) {
           source = "system"
         } else {
           source = "global"
         }
         
-        return { name, version, spec: pluginSpec, isFile: false, disabled, source }
+        // Check if enabled: system plugins are always enabled, others check config
+        const isEnabled = isSystemPlugin || plugins.includes(pluginSpec)
+        
+        return { name, version, spec: pluginSpec, isFile: false, isEnabled, source }
       })
       
       // Group by source
@@ -127,14 +133,21 @@ export function DialogPlugins() {
       }
 
       // Update config via SDK - merge with existing config
-      await sdk.client.config.update({
-        plugin: updatedPlugins,
+      const result = await sdk.client.config.update({
+        config: {
+          plugin: updatedPlugins,
+        },
       })
 
-      // Refresh config
-      const newConfig = await sdk.client.config.get({})
-      if (newConfig.data) {
-        sync.set("config", newConfig.data)
+      // Refresh config from response
+      if (result.data) {
+        sync.set("config", result.data)
+      } else {
+        // Fallback: fetch fresh config
+        const newConfig = await sdk.client.config.get({})
+        if (newConfig.data) {
+          sync.set("config", newConfig.data)
+        }
       }
     } catch (error) {
       console.error("Failed to toggle plugin:", error)
@@ -206,11 +219,8 @@ export function DialogPlugins() {
                     const isSelected = createMemo(() => flatIndex() === selectedIndex())
                     const isLoading = createMemo(() => loading() === plugin.spec)
                     const canToggle = createMemo(() => source !== "system")
-                    const isEnabled = createMemo(() => {
-                      const config = sync.data.config
-                      const configPlugins = config?.plugin || []
-                      return configPlugins.includes(plugin.spec)
-                    })
+                    // Use the isEnabled from the plugin data (system plugins are always enabled)
+                    const pluginEnabled = createMemo(() => plugin.isEnabled)
                     
                     return (
                       <box 
@@ -219,12 +229,17 @@ export function DialogPlugins() {
                         alignItems="flex-start" 
                         paddingBottom={0.5} 
                         paddingTop={0.25}
-                        backgroundColor={isSelected() ? theme.backgroundPanel : undefined}
+                        backgroundColor={isSelected() ? theme.primary : undefined}
+                        paddingLeft={isSelected() ? 1 : 0}
+                        paddingRight={isSelected() ? 1 : 0}
                         onMouseUp={() => {
+                          setSelectedIndex(flatIndex())
                           if (canToggle()) {
-                            setSelectedIndex(flatIndex())
                             togglePlugin({ ...plugin, source })
                           }
+                        }}
+                        onMouseOver={() => {
+                          setSelectedIndex(flatIndex())
                         }}
                       >
                         <box flexShrink={0} width={2} alignItems="center" justifyContent="flex-start">
@@ -232,14 +247,14 @@ export function DialogPlugins() {
                             <text style={{ fg: theme.textMuted }}>⋯</text>
                           </Show>
                           <Show when={!isLoading()}>
-                            <text style={{ fg: isEnabled() ? theme.success : theme.textMuted }} attributes={TextAttributes.BOLD}>
-                              {isEnabled() ? "●" : "◯"}
+                            <text style={{ fg: pluginEnabled() ? (isSelected() ? theme.text : theme.success) : theme.textMuted }} attributes={TextAttributes.BOLD}>
+                              {pluginEnabled() ? "●" : "◯"}
                             </text>
                           </Show>
                         </box>
                         <box flexDirection="column" gap={0.25} flexGrow={1} paddingLeft={0}>
                           <box flexDirection="row" gap={1} alignItems="center" paddingLeft={0}>
-                            <text fg={isEnabled() ? theme.text : theme.textMuted} attributes={TextAttributes.BOLD} paddingLeft={0}>
+                            <text fg={isSelected() ? (pluginEnabled() ? theme.text : theme.textMuted) : (pluginEnabled() ? theme.text : theme.textMuted)} attributes={isSelected() ? TextAttributes.BOLD : (pluginEnabled() ? TextAttributes.BOLD : undefined)} paddingLeft={0}>
                               {plugin.name}
                             </text>
                             <Show when={plugin.version}>
