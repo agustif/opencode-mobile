@@ -23,6 +23,26 @@ export function Sidebar(props: { sessionID: string }) {
     diff: true,
     todo: true,
     lsp: true,
+    plugins: true,
+  })
+
+  const enabledPlugins = createMemo(() => {
+    try {
+      const config = sync.data.config
+      const plugins = config?.plugin || []
+      const defaultPlugins = [
+        "opencode-copilot-auth@0.0.9",
+        "opencode-anthropic-auth@0.0.5",
+      ]
+      const allPlugins = [...plugins, ...defaultPlugins]
+      const uniquePlugins = Array.from(new Set(allPlugins))
+      return uniquePlugins.map((pluginSpec) => {
+        const atIndex = pluginSpec.lastIndexOf("@")
+        return atIndex > 0 ? pluginSpec.substring(0, atIndex) : pluginSpec
+      })
+    } catch {
+      return []
+    }
   })
 
   // Sort MCP servers alphabetically for consistent display order
@@ -241,6 +261,34 @@ export function Sidebar(props: { sessionID: string }) {
                         </box>
                       )
                     }}
+                  </For>
+                </Show>
+              </box>
+            </Show>
+            <Show when={enabledPlugins().length > 0}>
+              <box>
+                <box
+                  flexDirection="row"
+                  gap={1}
+                  onMouseDown={() => enabledPlugins().length > 2 && setExpanded("plugins", !expanded.plugins)}
+                >
+                  <Show when={enabledPlugins().length > 2}>
+                    <text fg={theme.text}>{expanded.plugins ? "▼" : "▶"}</text>
+                  </Show>
+                  <text fg={theme.text}>
+                    <b>Plugins</b>
+                  </text>
+                </box>
+                <Show when={enabledPlugins().length <= 2 || expanded.plugins}>
+                  <For each={enabledPlugins()}>
+                    {(plugin) => (
+                      <box flexDirection="row" gap={1}>
+                        <text flexShrink={0} style={{ fg: theme.success }}>•</text>
+                        <text fg={theme.text} wrapMode="word">
+                          {plugin}
+                        </text>
+                      </box>
+                    )}
                   </For>
                 </Show>
               </box>
