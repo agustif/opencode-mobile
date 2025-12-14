@@ -223,12 +223,17 @@ export function DialogPlugins() {
     <box paddingLeft={2} paddingRight={2} paddingTop={1} paddingBottom={1} gap={0.5}>
       <box flexDirection="row" justifyContent="space-between" paddingBottom={0.5}>
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
-          Enabled Plugins
+          Plugins
         </text>
         <box flexDirection="row" gap={1}>
           <text fg={theme.textMuted}>space: toggle</text>
           <text fg={theme.textMuted}>esc</text>
         </box>
+      </box>
+      <box paddingBottom={0.5}>
+        <text fg={theme.textMuted}>
+          Changes require restart to take effect
+        </text>
       </box>
       <box>
         <Show when={enabledPlugins().length === 0}>
