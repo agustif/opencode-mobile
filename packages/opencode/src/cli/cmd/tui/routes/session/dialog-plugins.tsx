@@ -9,6 +9,7 @@ import { useKeyboard } from "@opentui/solid"
 import { Keybind } from "@/util/keybind"
 import { useKV } from "@tui/context/kv"
 import { useToast } from "@tui/ui/toast"
+import { reconcile } from "solid-js/store"
 
 export function DialogPlugins() {
   const sync = useSync()
@@ -169,14 +170,14 @@ export function DialogPlugins() {
         } as any,
       })
 
-      // Refresh config from response
+      // Refresh config from response using reconcile for deep reactive updates
       if (result.data) {
-        sync.set("config", result.data)
+        sync.set("config", reconcile(result.data))
       } else {
         // Fallback: fetch fresh config
         const newConfig = await sdk.client.config.get({})
         if (newConfig.data) {
-          sync.set("config", newConfig.data)
+          sync.set("config", reconcile(newConfig.data))
         }
       }
 
