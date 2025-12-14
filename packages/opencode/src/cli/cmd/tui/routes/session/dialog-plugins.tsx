@@ -134,7 +134,7 @@ export function DialogPlugins() {
     try {
       const currentConfig = sync.data.config
       const currentPlugins = currentConfig?.plugin || []
-      const currentDisabled = (currentConfig?.disabled_plugins as string[] | undefined) || []
+      const currentDisabled = ((currentConfig as any)?.disabled_plugins as string[] | undefined) || []
       
       // Check if plugin is currently enabled (in plugin array and not in disabled_plugins)
       const isCurrentlyEnabled = currentPlugins.includes(plugin.spec) && !currentDisabled.includes(plugin.spec)
@@ -163,7 +163,7 @@ export function DialogPlugins() {
         config: {
           plugin: updatedPlugins,
           disabled_plugins: updatedDisabled,
-        },
+        } as any,
       })
 
       // Refresh config from response
