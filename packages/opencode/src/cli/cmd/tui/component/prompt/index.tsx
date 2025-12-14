@@ -849,15 +849,7 @@ export function Prompt(props: PromptProps) {
               cursorColor={theme.text}
               syntaxStyle={syntax()}
             />
-            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="flex-end" alignItems="center">
-              <Show when={store.mode === "normal"}>
-                <box flexDirection="row" gap={1}>
-                  <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
-                    {local.model.parsed().model}
-                  </text>
-                  <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
-                </box>
-              </Show>
+            <box flexDirection="row" flexShrink={0} paddingTop={1} gap={1} justifyContent="space-between" alignItems="center">
               <box flexDirection="row" gap={0.5} alignItems="center">
                 <Show when={platform() === "darwin"}>
                   <text fg={highlight()}>⇥</text>
@@ -866,6 +858,14 @@ export function Prompt(props: PromptProps) {
                   {store.mode === "shell" ? "Shell" : Locale.titlecase(local.agent.current().name)}
                 </text>
               </box>
+              <Show when={store.mode === "normal"}>
+                <box flexDirection="row" gap={1}>
+                  <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
+                    {local.model.parsed().model}
+                  </text>
+                  <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
+                </box>
+              </Show>
             </box>
           </box>
         </box>
