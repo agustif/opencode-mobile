@@ -32,13 +32,16 @@ export function DialogPlugins() {
       const config = sync.data.config
       const plugins = config?.plugin || []
       
-      // Get previously seen plugins from KV (to show disabled ones)
-      const seenPlugins = kv.get("plugins_seen", []) as string[]
+      const disabledPlugins = ((config as any)?.disabled_plugins as string[] | undefined) || []
       
-      // Merge current plugins, default plugins, and previously seen plugins
-      // This ensures disabled plugins still show up
-      const allPlugins = [...new Set([...plugins, ...defaultPlugins, ...seenPlugins])]
+      // Merge current plugins, default plugins, and disabled plugins
+      // This ensures disabled plugins still show up in the UI
+      const allPlugins = [...new Set([...plugins, ...defaultPlugins, ...disabledPlugins])]
       const uniquePlugins = Array.from(new Set(allPlugins))
+      
+      // Create Sets for fast lookup
+      const enabledSet = new Set(plugins)
+      const disabledSet = new Set(disabledPlugins)
       
       const mappedPlugins = uniquePlugins.map((pluginSpec) => {
         // Determine source: global vs project
