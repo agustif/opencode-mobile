@@ -955,24 +955,23 @@ export namespace Config {
   }
 
   export async function update(config: Info) {
-    // Find existing config file or create new one
-    let filepath: string
-    const jsoncPath = path.join(Instance.directory, "opencode.jsonc")
-    const jsonPath = path.join(Instance.directory, "opencode.json")
+    // Find existing config file using the same logic as config loading
+    // This ensures we write to the same file that will be loaded
+    let filepath: string | undefined
     
-    // Check if opencode.jsonc exists
-    try {
-      await fs.access(jsoncPath)
-      filepath = jsoncPath
-    } catch {
-      // Check if opencode.json exists
-      try {
-        await fs.access(jsonPath)
-        filepath = jsonPath
-      } catch {
-        // Neither exists, create opencode.jsonc
-        filepath = jsoncPath
+    // Look for existing config files traversing up (same as config loading)
+    for (const file of ["opencode.jsonc", "opencode.json"]) {
+      const found = await Filesystem.findUp(file, Instance.directory, Instance.worktree)
+      if (found.length > 0) {
+        // Use the first (closest) config file found
+        filepath = found[0]
+        break
       }
+    }
+    
+    // If no existing config file found, create one in Instance.directory
+    if (!filepath) {
+      filepath = path.join(Instance.directory, "opencode.jsonc")
     }
     
     const existing = await loadFile(filepath).catch(() => ({} as Info))
