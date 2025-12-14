@@ -87,35 +87,35 @@ export function DialogPlugins() {
   })
 
   return (
-    <box paddingLeft={3} paddingRight={3} paddingTop={1} paddingBottom={2} gap={1}>
-      <box flexDirection="row" justifyContent="space-between" paddingBottom={1}>
+    <box paddingLeft={2} paddingRight={2} paddingTop={1} paddingBottom={1} gap={0.5}>
+      <box flexDirection="row" justifyContent="space-between" paddingBottom={0.5}>
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           Enabled Plugins
         </text>
         <text fg={theme.textMuted}>esc</text>
       </box>
-      <box paddingBottom={1}>
+      <box>
         <Show when={enabledPlugins().length === 0}>
           <text fg={theme.textMuted}>No plugins enabled</text>
         </Show>
         <Show when={enabledPlugins().length > 0}>
           <For each={enabledPlugins()}>
             {({ source, plugins }) => (
-              <box paddingBottom={plugins.length > 0 ? 1.5 : 0}>
-                <box paddingBottom={0.5} paddingTop={plugins.length > 0 ? 1 : 0}>
+              <box paddingBottom={plugins.length > 0 ? 0.5 : 0}>
+                <box paddingBottom={0.25} paddingTop={plugins.length > 0 ? 0.5 : 0}>
                   <text fg={theme.accent} attributes={TextAttributes.BOLD}>
                     {source === "system" ? "System" : source === "global" ? "Global" : "Project"}
                   </text>
                 </box>
                 <For each={plugins}>
                   {(plugin) => (
-                    <box flexDirection="row" gap={1} alignItems="flex-start" paddingBottom={1} paddingTop={0.5}>
+                    <box flexDirection="row" gap={1} alignItems="flex-start" paddingBottom={0.5} paddingTop={0.25}>
                       <box flexShrink={0} width={2} alignItems="center" justifyContent="flex-start">
                         <text style={{ fg: plugin.disabled ? theme.textMuted : theme.success }} attributes={TextAttributes.BOLD}>
                           {plugin.disabled ? "◯" : "●"}
                         </text>
                       </box>
-                      <box flexDirection="column" gap={0.5} flexGrow={1} paddingLeft={0}>
+                      <box flexDirection="column" gap={0.25} flexGrow={1} paddingLeft={0}>
                         <box flexDirection="row" gap={1} alignItems="center" paddingLeft={0}>
                           <text fg={plugin.disabled ? theme.textMuted : theme.text} attributes={TextAttributes.BOLD} paddingLeft={0}>
                             {plugin.name}
