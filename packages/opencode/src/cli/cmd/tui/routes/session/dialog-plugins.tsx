@@ -8,6 +8,7 @@ import { useSDK } from "@tui/context/sdk"
 import { useKeyboard } from "@opentui/solid"
 import { Keybind } from "@/util/keybind"
 import { useKV } from "@tui/context/kv"
+import { useToast } from "@tui/ui/toast"
 
 export function DialogPlugins() {
   const sync = useSync()
@@ -15,6 +16,7 @@ export function DialogPlugins() {
   const dialog = useDialog()
   const sdk = useSDK()
   const kv = useKV()
+  const toast = useToast()
   const [loading, setLoading] = createSignal<string | null>(null)
   const [selectedIndex, setSelectedIndex] = createSignal(0)
 
@@ -170,8 +172,20 @@ export function DialogPlugins() {
           sync.set("config", newConfig.data)
         }
       }
+
+      // Show notification that restart is needed
+      toast.show({
+        message: `Plugin ${isCurrentlyEnabled ? "disabled" : "enabled"}. Restart TUI for changes to take effect.`,
+        variant: "info",
+        duration: 5000,
+      })
     } catch (error) {
       console.error("Failed to toggle plugin:", error)
+      toast.show({
+        message: "Failed to update plugin configuration",
+        variant: "error",
+        duration: 3000,
+      })
     } finally {
       setLoading(null)
     }
