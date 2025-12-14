@@ -93,9 +93,16 @@ export function DialogPlugins() {
         return { name, version, spec: pluginSpec, isFile: false, isEnabled, source }
       })
       
-      // Group by source
+      // Group by source, but put system last
       const grouped = groupBy(mappedPlugins, (p) => p.source)
-      return entries(grouped).map(([source, plugins]) => ({
+      const groupedEntries = entries(grouped)
+      // Sort: system last, others first
+      const sorted = groupedEntries.sort(([a], [b]) => {
+        if (a === "system") return 1
+        if (b === "system") return -1
+        return 0
+      })
+      return sorted.map(([source, plugins]) => ({
         source: source as "global" | "project" | "system",
         plugins,
       }))
@@ -104,11 +111,13 @@ export function DialogPlugins() {
     }
   })
 
-  // Flatten plugins for keyboard navigation
+  // Flatten plugins for keyboard navigation (exclude system plugins)
   const flatPlugins = createMemo(() => {
-    return enabledPlugins().flatMap(({ source, plugins }) =>
-      plugins.map((plugin) => ({ ...plugin, source }))
-    )
+    return enabledPlugins()
+      .filter(({ source }) => source !== "system")
+      .flatMap(({ source, plugins }) =>
+        plugins.map((plugin) => ({ ...plugin, source }))
+      )
   })
 
   const selectedPlugin = createMemo(() => flatPlugins()[selectedIndex()])
@@ -208,15 +217,25 @@ export function DialogPlugins() {
             {({ source, plugins }) => (
               <box paddingBottom={plugins.length > 0 ? 0.5 : 0}>
                 <box paddingBottom={0.25} paddingTop={plugins.length > 0 ? 0.5 : 0}>
-                  <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-                    {source === "system" ? "System" : source === "global" ? "Global" : "Project"}
-                  </text>
+                  <box flexDirection="row" gap={1} alignItems="center">
+                    <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+                      {source === "system" ? "System" : source === "global" ? "Global" : "Project"}
+                    </text>
+                    <Show when={source === "system"}>
+                      <text fg={theme.textMuted}>
+                        (cannot be disabled)
+                      </text>
+                    </Show>
+                  </box>
                 </box>
                 <For each={plugins}>
                   {(plugin, pluginIndex) => {
+                    // System plugins are not selectable, so they don't have a flatIndex
                     const flatIndex = createMemo(() => {
+                      if (source === "system") return -1 // Not selectable
                       let idx = 0
                       for (const group of enabledPlugins()) {
+                        if (group.source === "system") continue // Skip system plugins
                         if (group.source === source) {
                           const localIndex = group.plugins.findIndex((p) => p.spec === plugin.spec)
                           if (localIndex >= 0) return idx + localIndex
@@ -228,7 +247,7 @@ export function DialogPlugins() {
                       }
                       return idx
                     })
-                    const isSelected = createMemo(() => flatIndex() === selectedIndex())
+                    const isSelected = createMemo(() => source !== "system" && flatIndex() === selectedIndex())
                     const isLoading = createMemo(() => loading() === plugin.spec)
                     const canToggle = createMemo(() => source !== "system")
                     // Use the isEnabled from the plugin data (system plugins are always enabled)
@@ -247,13 +266,17 @@ export function DialogPlugins() {
                         paddingLeft={isSelected() ? 1 : 0}
                         paddingRight={isSelected() ? 1 : 0}
                         onMouseUp={() => {
-                          setSelectedIndex(flatIndex())
-                          if (canToggle()) {
-                            togglePlugin({ ...plugin, source })
+                          if (source !== "system") {
+                            setSelectedIndex(flatIndex())
+                            if (canToggle()) {
+                              togglePlugin({ ...plugin, source })
+                            }
                           }
                         }}
                         onMouseOver={() => {
-                          setSelectedIndex(flatIndex())
+                          if (source !== "system") {
+                            setSelectedIndex(flatIndex())
+                          }
                         }}
                       >
                         <box flexShrink={0} width={2} alignItems="center" justifyContent="flex-start">
