@@ -399,8 +399,8 @@ export namespace Server {
         validator("json", Config.Info),
         async (c) => {
           const config = c.req.valid("json")
-          await Config.update(config)
-          return c.json(config)
+          const result = await Config.update(config)
+          return c.json(result)
         },
       )
       .get(

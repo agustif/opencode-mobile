@@ -30,6 +30,13 @@ export namespace Config {
       const pluginSet = new Set([...target.plugin, ...source.plugin])
       merged.plugin = Array.from(pluginSet)
     }
+    // Merge disabled_plugins arrays (union) instead of replacing
+    if ((target as any).disabled_plugins || (source as any).disabled_plugins) {
+      const targetDisabled = new Set((target as any).disabled_plugins ?? [])
+      const sourceDisabled = new Set((source as any).disabled_plugins ?? [])
+      const mergedDisabled = new Set([...targetDisabled, ...sourceDisabled])
+      ;(merged as any).disabled_plugins = Array.from(mergedDisabled)
+    }
     return merged
   }
 
@@ -954,9 +961,8 @@ export namespace Config {
     return state().then((x) => x.config)
   }
 
-  export async function update(config: Info) {
+  export async function update(config: Info): Promise<Info> {
     // Find existing config file using the same logic as config loading
-    // This ensures we write to the same file that will be loaded
     let filepath: string | undefined
     
     // Look for existing config files traversing up (same as config loading)
@@ -974,10 +980,23 @@ export namespace Config {
       filepath = path.join(Instance.directory, "opencode.jsonc")
     }
     
-    const existing = await loadFile(filepath).catch(() => ({} as Info))
-    const merged = mergeDeep(existing, config)
-    await Bun.write(filepath, JSON.stringify(merged, null, 2))
+    // Load the existing file content to preserve other fields
+    const existingFile = await loadFile(filepath).catch(() => ({} as Info))
+    
+    // Merge the update with the existing file content
+    // This preserves other fields in the file while updating plugin/disabled_plugins
+    const fileUpdate = mergeConfigWithPlugins(existingFile, config)
+    
+    // Write to file
+    await Bun.write(filepath, JSON.stringify(fileUpdate, null, 2))
+    
+    // Dispose to clear cache so next Config.get() will reload from files
     await Instance.dispose()
+    
+    // Get the full merged config (what will be loaded on next session)
+    const fullConfig = await Config.get()
+    
+    return fullConfig
   }
 
   export async function directories() {
