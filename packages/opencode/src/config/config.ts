@@ -983,9 +983,17 @@ export namespace Config {
     // Load the existing file content to preserve other fields
     const existingFile = await loadFile(filepath).catch(() => ({} as Info))
     
-    // Merge the update with the existing file content
-    // This preserves other fields in the file while updating plugin/disabled_plugins
-    const fileUpdate = mergeConfigWithPlugins(existingFile, config)
+    // For plugin/disabled_plugins arrays, REPLACE them (don't merge)
+    // This is an update operation, not a config merge from multiple sources
+    const fileUpdate = mergeDeep(existingFile, config)
+    
+    // Explicitly set plugin and disabled_plugins arrays from the update (replace, don't merge)
+    if (config.plugin !== undefined) {
+      fileUpdate.plugin = config.plugin
+    }
+    if ((config as any).disabled_plugins !== undefined) {
+      ;(fileUpdate as any).disabled_plugins = (config as any).disabled_plugins
+    }
     
     // Write to file
     await Bun.write(filepath, JSON.stringify(fileUpdate, null, 2))
