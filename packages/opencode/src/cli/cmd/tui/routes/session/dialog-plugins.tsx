@@ -1,18 +1,20 @@
 import { useSync } from "@tui/context/sync"
 import { createMemo, createSignal, For, Show, onMount } from "solid-js"
-import { useTheme } from "@tui/context/theme"
+import { useTheme, selectedForeground } from "@tui/context/theme"
 import { useDialog } from "@tui/ui/dialog"
 import { TextAttributes } from "@opentui/core"
 import { groupBy, entries } from "remeda"
 import { useSDK } from "@tui/context/sdk"
 import { useKeyboard } from "@opentui/solid"
 import { Keybind } from "@/util/keybind"
+import { useKV } from "@tui/context/kv"
 
 export function DialogPlugins() {
   const sync = useSync()
   const { theme } = useTheme()
   const dialog = useDialog()
   const sdk = useSDK()
+  const kv = useKV()
   const [loading, setLoading] = createSignal<string | null>(null)
   const [selectedIndex, setSelectedIndex] = createSignal(0)
 
@@ -28,8 +30,12 @@ export function DialogPlugins() {
       const config = sync.data.config
       const plugins = config?.plugin || []
       
-      // System plugins are always enabled, check if they're in config or are defaults
-      const allPlugins = [...plugins, ...defaultPlugins]
+      // Get previously seen plugins from KV (to show disabled ones)
+      const seenPlugins = kv.get("plugins_seen", []) as string[]
+      
+      // Merge current plugins, default plugins, and previously seen plugins
+      // This ensures disabled plugins still show up
+      const allPlugins = [...new Set([...plugins, ...defaultPlugins, ...seenPlugins])]
       const uniquePlugins = Array.from(new Set(allPlugins))
       
       const mappedPlugins = uniquePlugins.map((pluginSpec) => {
@@ -139,6 +145,12 @@ export function DialogPlugins() {
         },
       })
 
+      // Track this plugin as seen (so it shows up even when disabled)
+      const seenPlugins = kv.get("plugins_seen", []) as string[]
+      if (!seenPlugins.includes(plugin.spec)) {
+        kv.set("plugins_seen", [...seenPlugins, plugin.spec])
+      }
+
       // Refresh config from response
       if (result.data) {
         sync.set("config", result.data)
@@ -222,6 +234,8 @@ export function DialogPlugins() {
                     // Use the isEnabled from the plugin data (system plugins are always enabled)
                     const pluginEnabled = createMemo(() => plugin.isEnabled)
                     
+                    const selectedFg = createMemo(() => selectedForeground(theme))
+                    
                     return (
                       <box 
                         flexDirection="row" 
@@ -244,37 +258,37 @@ export function DialogPlugins() {
                       >
                         <box flexShrink={0} width={2} alignItems="center" justifyContent="flex-start">
                           <Show when={isLoading()}>
-                            <text style={{ fg: theme.textMuted }}>⋯</text>
+                            <text style={{ fg: isSelected() ? selectedFg() : theme.textMuted }}>⋯</text>
                           </Show>
                           <Show when={!isLoading()}>
-                            <text style={{ fg: pluginEnabled() ? (isSelected() ? theme.text : theme.success) : theme.textMuted }} attributes={TextAttributes.BOLD}>
+                            <text style={{ fg: isSelected() ? selectedFg() : (pluginEnabled() ? theme.success : theme.textMuted) }} attributes={TextAttributes.BOLD}>
                               {pluginEnabled() ? "●" : "◯"}
                             </text>
                           </Show>
                         </box>
                         <box flexDirection="column" gap={0.25} flexGrow={1} paddingLeft={0}>
                           <box flexDirection="row" gap={1} alignItems="center" paddingLeft={0}>
-                            <text fg={isSelected() ? (pluginEnabled() ? theme.text : theme.textMuted) : (pluginEnabled() ? theme.text : theme.textMuted)} attributes={isSelected() ? TextAttributes.BOLD : (pluginEnabled() ? TextAttributes.BOLD : undefined)} paddingLeft={0}>
+                            <text fg={isSelected() ? selectedFg() : (pluginEnabled() ? theme.text : theme.textMuted)} attributes={isSelected() ? TextAttributes.BOLD : (pluginEnabled() ? TextAttributes.BOLD : undefined)} paddingLeft={0}>
                               {plugin.name}
                             </text>
                             <Show when={plugin.version}>
-                              <text fg={theme.textMuted} paddingLeft={0}>
+                              <text fg={isSelected() ? selectedFg() : theme.textMuted} paddingLeft={0}>
                                 v{plugin.version}
                               </text>
                             </Show>
                             <Show when={source === "project"}>
-                              <text fg={theme.accent} paddingLeft={0.5}>
-                                <span style={{ fg: theme.accent }}>[project]</span>
+                              <text fg={isSelected() ? selectedFg() : theme.accent} paddingLeft={0.5}>
+                                <span style={{ fg: isSelected() ? selectedFg() : theme.accent }}>[project]</span>
                               </text>
                             </Show>
                             <Show when={!canToggle()}>
-                              <text fg={theme.textMuted} paddingLeft={0.5}>
-                                <span style={{ fg: theme.textMuted }}>[system]</span>
+                              <text fg={isSelected() ? selectedFg() : theme.textMuted} paddingLeft={0.5}>
+                                <span style={{ fg: isSelected() ? selectedFg() : theme.textMuted }}>[system]</span>
                               </text>
                             </Show>
                           </box>
                           <Show when={plugin.isFile && plugin.path}>
-                            <text fg={theme.textMuted} paddingLeft={0}>
+                            <text fg={isSelected() ? selectedFg() : theme.textMuted} paddingLeft={0}>
                               {plugin.path}
                             </text>
                           </Show>
