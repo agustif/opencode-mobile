@@ -45,6 +45,10 @@ export function DialogPlugins() {
         let source: "global" | "project" | "system" = "global"
         const isSystemPlugin = defaultPlugins.includes(pluginSpec)
         
+        // Check if enabled: system plugins are always enabled, others check if in config.plugin array
+        // Use exact match since config stores resolved URLs
+        const isEnabled = isSystemPlugin || plugins.some(p => p === pluginSpec)
+        
         // Handle file:// paths
         if (pluginSpec.startsWith("file://")) {
           const path = pluginSpec.replace("file://", "")
@@ -62,9 +66,6 @@ export function DialogPlugins() {
             // Default to project if it's a relative path or contains project indicators
             source = pathStr.includes(".opencode") ? "project" : "global"
           }
-          
-          // Check if enabled: system plugins are always enabled, others check config
-          const isEnabled = isSystemPlugin || plugins.includes(pluginSpec)
           
           return {
             name: nameWithoutExt,
@@ -88,9 +89,6 @@ export function DialogPlugins() {
         } else {
           source = "global"
         }
-        
-        // Check if enabled: system plugins are always enabled, others check config
-        const isEnabled = isSystemPlugin || plugins.includes(pluginSpec)
         
         return { name, version, spec: pluginSpec, isFile: false, isEnabled, source }
       })
@@ -137,16 +135,20 @@ export function DialogPlugins() {
       const currentConfig = sync.data.config
       const currentPlugins = currentConfig?.plugin || []
       
-      // Check if plugin is currently enabled in config
+      // Check if plugin is currently enabled in config (exact match)
       const isCurrentlyEnabled = currentPlugins.includes(plugin.spec)
       
       let updatedPlugins: string[]
       if (isCurrentlyEnabled) {
-        // Disable: remove from config
+        // Disable: remove from config (exact match)
         updatedPlugins = currentPlugins.filter((p) => p !== plugin.spec)
       } else {
-        // Enable: add to config
-        updatedPlugins = [...currentPlugins, plugin.spec]
+        // Enable: add to config (avoid duplicates)
+        if (!currentPlugins.includes(plugin.spec)) {
+          updatedPlugins = [...currentPlugins, plugin.spec]
+        } else {
+          updatedPlugins = currentPlugins
+        }
       }
 
       // Update config via SDK - merge with existing config
