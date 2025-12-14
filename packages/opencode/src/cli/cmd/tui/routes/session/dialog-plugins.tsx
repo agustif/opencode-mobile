@@ -47,20 +47,11 @@ export function DialogPlugins() {
         const atIndex = pluginSpec.lastIndexOf("@")
         const name = atIndex > 0 ? pluginSpec.substring(0, atIndex) : pluginSpec
         const version = atIndex > 0 ? pluginSpec.substring(atIndex + 1) : undefined
-        return { name, version, spec: pluginSpec, isFile: false, disabled: false }
+        // Mark plugins with "disabled" in name as disabled (for testing)
+        const disabled = name.includes("disabled") || name.includes("-disabled")
+        return { name, version, spec: pluginSpec, isFile: false, disabled }
       })
-      // Add a dummy disabled plugin for testing
-      return [
-        ...mappedPlugins,
-        {
-          name: "opencode-example-disabled",
-          version: "0.0.1",
-          spec: "opencode-example-disabled@0.0.1",
-          isFile: false,
-          disabled: true,
-          path: undefined,
-        },
-      ]
+      return mappedPlugins
     } catch {
       return []
     }
