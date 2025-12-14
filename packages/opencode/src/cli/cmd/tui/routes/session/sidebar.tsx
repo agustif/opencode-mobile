@@ -1,22 +1,50 @@
 import { useSync } from "@tui/context/sync"
-import { createMemo, For, Show, Switch, Match } from "solid-js"
+import { createMemo, For, Show, Switch, Match, createSignal } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useTheme } from "../../context/theme"
 import { Locale } from "@/util/locale"
-import path from "path"
+import * as path from "path"
 import type { AssistantMessage } from "@opencode-ai/sdk/v2"
 import { Global } from "@/global"
 import { Installation } from "@/installation"
 import { useKeybind } from "../../context/keybind"
 import { useDirectory } from "../../context/directory"
+import { useKV } from "../../context/kv"
+import { useKeyboard } from "@opentui/solid"
+import type { MouseEvent } from "@opentui/core"
 
 export function Sidebar(props: { sessionID: string }) {
   const sync = useSync()
   const { theme } = useTheme()
+  const kv = useKV()
   const session = createMemo(() => sync.session.get(props.sessionID)!)
   const diff = createMemo(() => sync.data.session_diff[props.sessionID] ?? [])
   const todo = createMemo(() => sync.data.todo[props.sessionID] ?? [])
   const messages = createMemo(() => sync.data.message[props.sessionID] ?? [])
+
+  const [sidebarWidth, setSidebarWidth] = createSignal(kv.get("sidebar_width", 42))
+
+  const updateWidth = (newWidth: number) => {
+    const clamped = Math.max(20, Math.min(80, newWidth))
+    setSidebarWidth(clamped)
+    kv.set("sidebar_width", clamped)
+  }
+
+  useKeyboard((evt) => {
+    if (evt.ctrl && evt.shift) {
+      if (evt.name === "left") {
+        updateWidth(sidebarWidth() + 2)
+        evt.preventDefault()
+      } else if (evt.name === "right") {
+        updateWidth(sidebarWidth() - 2)
+        evt.preventDefault()
+      }
+    }
+  })
+
+  const handleResizeClick = (e: MouseEvent) => {
+    updateWidth(sidebarWidth() + 2)
+  }
 
   const [expanded, setExpanded] = createStore({
     mcp: true,
@@ -59,14 +87,16 @@ export function Sidebar(props: { sessionID: string }) {
     <Show when={session()}>
       <box
         backgroundColor={theme.backgroundPanel}
-        width={42}
+        width={sidebarWidth() + 1}
         paddingTop={1}
         paddingBottom={1}
         paddingLeft={2}
-        paddingRight={2}
+        paddingRight={0}
+        flexDirection="row"
       >
-        <scrollbox flexGrow={1}>
-          <box flexShrink={0} gap={1} paddingRight={1}>
+        <box flexGrow={1} flexShrink={1} flexDirection="column" paddingRight={1}>
+          <scrollbox flexGrow={1}>
+            <box flexShrink={0} gap={1}>
             <box>
               <text fg={theme.text}>
                 <b>{session().title}</b>
@@ -246,9 +276,9 @@ export function Sidebar(props: { sessionID: string }) {
               </box>
             </Show>
           </box>
-        </scrollbox>
-
-        <box flexShrink={0} gap={1} paddingTop={1}>
+          </scrollbox>
+          
+          <box flexShrink={0} gap={1} paddingTop={1}>
           <Show when={!hasProviders()}>
             <box
               backgroundColor={theme.backgroundElement}
@@ -289,6 +319,13 @@ export function Sidebar(props: { sessionID: string }) {
             <span>{Installation.VERSION}</span>
           </text>
         </box>
+        </box>
+        
+        <box
+          width={1}
+          backgroundColor={theme.backgroundElement}
+          onMouseDown={handleResizeClick}
+        />
       </box>
     </Show>
   )
