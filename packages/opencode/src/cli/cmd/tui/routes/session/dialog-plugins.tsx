@@ -134,35 +134,37 @@ export function DialogPlugins() {
     try {
       const currentConfig = sync.data.config
       const currentPlugins = currentConfig?.plugin || []
+      const currentDisabled = (currentConfig?.disabled_plugins as string[] | undefined) || []
       
-      // Check if plugin is currently enabled in config (exact match)
-      const isCurrentlyEnabled = currentPlugins.includes(plugin.spec)
+      // Check if plugin is currently enabled (in plugin array and not in disabled_plugins)
+      const isCurrentlyEnabled = currentPlugins.includes(plugin.spec) && !currentDisabled.includes(plugin.spec)
       
       let updatedPlugins: string[]
+      let updatedDisabled: string[]
+      
       if (isCurrentlyEnabled) {
-        // Disable: remove from config (exact match)
+        // Disable: move from plugin array to disabled_plugins array
         updatedPlugins = currentPlugins.filter((p) => p !== plugin.spec)
+        // Add to disabled if not already there
+        updatedDisabled = currentDisabled.includes(plugin.spec)
+          ? currentDisabled
+          : [...currentDisabled, plugin.spec]
       } else {
-        // Enable: add to config (avoid duplicates)
-        if (!currentPlugins.includes(plugin.spec)) {
-          updatedPlugins = [...currentPlugins, plugin.spec]
-        } else {
-          updatedPlugins = currentPlugins
-        }
+        // Enable: remove from disabled_plugins and ensure in plugin array
+        updatedDisabled = currentDisabled.filter((p) => p !== plugin.spec)
+        // Add to plugin array if not already there
+        updatedPlugins = currentPlugins.includes(plugin.spec)
+          ? currentPlugins
+          : [...currentPlugins, plugin.spec]
       }
 
       // Update config via SDK - merge with existing config
       const result = await sdk.client.config.update({
         config: {
           plugin: updatedPlugins,
+          disabled_plugins: updatedDisabled,
         },
       })
-
-      // Track this plugin as seen (so it shows up even when disabled)
-      const seenPlugins = kv.get("plugins_seen", []) as string[]
-      if (!seenPlugins.includes(plugin.spec)) {
-        kv.set("plugins_seen", [...seenPlugins, plugin.spec])
-      }
 
       // Refresh config from response
       if (result.data) {

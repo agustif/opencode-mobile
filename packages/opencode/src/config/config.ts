@@ -627,6 +627,10 @@ export namespace Config {
         })
         .optional(),
       plugin: z.string().array().optional(),
+      disabled_plugins: z
+        .array(z.string())
+        .optional()
+        .describe("Plugins that are explicitly disabled and should not be loaded"),
       snapshot: z.boolean().optional(),
       share: z
         .enum(["manual", "auto", "disabled"])
