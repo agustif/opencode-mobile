@@ -708,13 +708,27 @@ export namespace Provider {
     if (lmstudioConfig && providers.lmstudio) {
       const baseURL = lmstudioConfig.options?.baseURL || "http://127.0.0.1:1234/v1"
       try {
-        const response = await fetch(`${baseURL.replace(/\/$/, "")}/models`, {
+        // Use LM Studio API v0 for richer metadata
+        const apiV0URL = baseURL.replace("/v1", "/api/v0")
+        const response = await fetch(`${apiV0URL}/models`, {
           method: "GET",
           signal: AbortSignal.timeout(3000),
         })
 
         if (response.ok) {
-          const data = (await response.json()) as { data?: Array<{ id: string }> }
+          const data = (await response.json()) as {
+            data?: Array<{
+              id: string
+              object: string
+              type: string // "llm", "vlm", "embeddings"
+              publisher: string
+              arch: string
+              compatibility_type: string
+              quantization: string
+              state: string // "loaded", "not-loaded"
+              max_context_length: number
+            }>
+          }
           if (data.data && data.data.length > 0) {
             for (const model of data.data) {
               if (!providers.lmstudio!.models[model.id]) {
@@ -722,7 +736,7 @@ export namespace Provider {
                   id: model.id,
                   providerID: "lmstudio",
                   name: model.id,
-                  family: "",
+                  family: model.arch,
                   release_date: "",
                   api: {
                     id: model.id,
@@ -741,29 +755,29 @@ export namespace Provider {
                     },
                   },
                   limit: {
-                    context: 128000,
+                    context: model.max_context_length,
                     output: 4096,
                   },
                   capabilities: {
                     temperature: true,
                     reasoning: false,
-                    attachment: false,
+                    attachment: model.type === "vlm",
                     toolcall: true,
                     input: {
-                      text: true,
+                      text: model.type !== "embeddings",
                       audio: false,
-                      image: false,
+                      image: model.type === "vlm",
                       video: false,
                       pdf: false,
                     },
                     output: {
-                      text: true,
+                      text: model.type !== "embeddings",
                       audio: false,
                       image: false,
                       video: false,
                       pdf: false,
                     },
-                    interleaved: false,
+                    interleaved: model.type === "vlm",
                   },
                 }
               }
