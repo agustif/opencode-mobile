@@ -703,6 +703,82 @@ export namespace Provider {
       mergeProvider(providerID, partial)
     }
 
+    // LM Studio: discover real models from local instance
+    const lmstudioConfig = config.provider?.lmstudio
+    if (lmstudioConfig && providers.lmstudio) {
+      const baseURL = lmstudioConfig.options?.baseURL || "http://127.0.0.1:1234/v1"
+      try {
+        const response = await fetch(`${baseURL.replace(/\/$/, "")}/models`, {
+          method: "GET",
+          signal: AbortSignal.timeout(3000),
+        })
+
+        if (response.ok) {
+          const data = (await response.json()) as { data?: Array<{ id: string }> }
+          if (data.data && data.data.length > 0) {
+            for (const model of data.data) {
+              if (!providers.lmstudio!.models[model.id]) {
+                providers.lmstudio!.models[model.id] = {
+                  id: model.id,
+                  providerID: "lmstudio",
+                  name: model.id,
+                  family: "",
+                  release_date: "",
+                  api: {
+                    id: model.id,
+                    url: baseURL,
+                    npm: "@ai-sdk/openai-compatible",
+                  },
+                  status: "active" as const,
+                  headers: {},
+                  options: {},
+                  cost: {
+                    input: 0,
+                    output: 0,
+                    cache: {
+                      read: 0,
+                      write: 0,
+                    },
+                  },
+                  limit: {
+                    context: 128000,
+                    output: 4096,
+                  },
+                  capabilities: {
+                    temperature: true,
+                    reasoning: false,
+                    attachment: false,
+                    toolcall: true,
+                    input: {
+                      text: true,
+                      audio: false,
+                      image: false,
+                      video: false,
+                      pdf: false,
+                    },
+                    output: {
+                      text: true,
+                      audio: false,
+                      image: false,
+                      video: false,
+                      pdf: false,
+                    },
+                    interleaved: false,
+                  },
+                }
+              }
+            }
+            log.info("discovered LM Studio models", { count: data.data.length })
+          }
+        }
+      } catch (error) {
+        log.debug("failed to discover LM Studio models", {
+          baseURL,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
     for (const [providerID, provider] of Object.entries(providers)) {
       if (!isProviderAllowed(providerID)) {
         delete providers[providerID]
