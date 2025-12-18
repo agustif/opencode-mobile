@@ -729,8 +729,28 @@ export namespace Provider {
               max_context_length: number
             }>
           }
+
+          // Also get v1 data for additional fields
+          let v1Data
+          try {
+            const v1Response = await fetch(`${baseURL.replace(/\/$/, "")}/models`, {
+              method: "GET",
+              signal: AbortSignal.timeout(3000),
+            })
+
+            if (v1Response.ok) {
+              v1Data = (await v1Response.json()) as {
+                data?: Array<{ id: string; created?: number; owned_by?: string }>
+              }
+            }
+          } catch {
+            // Continue without v1 data
+          }
+
           if (data.data && data.data.length > 0) {
             for (const model of data.data) {
+              const v1Model = v1Data?.data?.find((m) => m.id === model.id)
+
               if (!providers.lmstudio!.models[model.id]) {
                 providers.lmstudio!.models[model.id] = {
                   id: model.id,
