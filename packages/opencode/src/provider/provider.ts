@@ -813,6 +813,155 @@ export namespace Provider {
       }
     }
 
+    // Generic OpenAI-compatible model discovery
+    console.log("🔍 Starting generic OpenAI-compatible model discovery")
+    for (const [providerID, provider] of Object.entries(providers)) {
+      const hasOpenAICompatibleModel = Object.values(provider.models).some(
+        (model) => model.api.npm === "@ai-sdk/openai-compatible",
+      )
+      if (!hasOpenAICompatibleModel) continue
+
+      const providerConfig = config.provider?.[providerID as keyof typeof config.provider]
+      const baseURL = providerConfig?.options?.baseURL || Object.values(provider.models)[0]?.api?.url
+      if (!baseURL) continue
+
+      console.log(`🔍 Checking ${providerID} at ${baseURL}`)
+
+      try {
+        const base = baseURL.replace(/\/$/, "")
+        let discoveredModels: any[] = []
+
+        // Try standard OpenAI /models endpoint
+        const modelsResponse = await fetch(`${base}/models`, {
+          method: "GET",
+          signal: AbortSignal.timeout(5000),
+        })
+
+        if (modelsResponse.ok) {
+          const data = await modelsResponse.json()
+
+          if (data.data && Array.isArray(data.data)) {
+            discoveredModels = data.data.map((model: any) => ({
+              id: model.id,
+              type: inferModelType(model.id),
+              context: inferContextLength(model.id),
+            }))
+          } else if (data.models && Array.isArray(data.models)) {
+            discoveredModels = data.models.map((model: any) => ({
+              id: model.name || model.model,
+              type: inferModelType(model.name || model.model),
+              context: inferContextLength(model.name || model.model),
+            }))
+          }
+        }
+
+        // Try Ollama /api/tags if /models failed
+        if (discoveredModels.length === 0) {
+          const tagsResponse = await fetch(`${base}/api/tags`, {
+            method: "GET",
+            signal: AbortSignal.timeout(5000),
+          })
+
+          if (tagsResponse.ok) {
+            const tagsData = await tagsResponse.json()
+            if (tagsData.models && Array.isArray(tagsData.models)) {
+              discoveredModels = tagsData.models.map((model: any) => ({
+                id: model.name || model.model,
+                type: inferModelType(model.name || model.model),
+                context: inferContextLength(model.name || model.model),
+              }))
+            }
+          }
+        }
+
+        // Register discovered models
+        for (const modelData of discoveredModels) {
+          if (!provider.models[modelData.id]) {
+            const isVision = /vision|vlm|multimodal|claude-3|gpt-4o/i.test(modelData.id)
+            const isReasoning = /reasoning|thinking|o1/i.test(modelData.id)
+            const isEmbedding = /embed|text-embedding|e5-/i.test(modelData.id)
+
+            provider.models[modelData.id] = {
+              id: modelData.id,
+              providerID,
+              name: modelData.id,
+              family: "",
+              release_date: "",
+              api: {
+                id: modelData.id,
+                url: baseURL,
+                npm: "@ai-sdk/openai-compatible",
+              },
+              status: "active" as const,
+              headers: {},
+              options: {},
+              cost: {
+                input: 0,
+                output: 0,
+                cache: { read: 0, write: 0 },
+              },
+              limit: {
+                context: modelData.context || inferContextLength(modelData.id),
+                output: 4096,
+              },
+              capabilities: {
+                temperature: !isEmbedding,
+                reasoning: isReasoning,
+                attachment: isVision,
+                toolcall: !isEmbedding,
+                input: {
+                  text: !isEmbedding,
+                  audio: false,
+                  image: isVision,
+                  video: false,
+                  pdf: false,
+                },
+                output: {
+                  text: !isEmbedding,
+                  audio: false,
+                  image: false,
+                  video: false,
+                  pdf: false,
+                },
+                interleaved: isVision,
+              },
+            }
+          }
+        }
+
+        if (discoveredModels.length > 0) {
+          console.log(`✅ Discovered ${discoveredModels.length} OpenAI-compatible models for ${providerID}`)
+        }
+      } catch (error) {
+        console.log(
+          `❌ Failed to discover models for ${providerID}:`,
+          error instanceof Error ? error.message : String(error),
+        )
+      }
+    }
+
+    function inferModelType(modelId: string): string {
+      if (/embed|text-embedding|e5-/i.test(modelId)) return "embeddings"
+      if (/vision|vlm|multimodal|claude-3|gpt-4o/i.test(modelId)) return "vlm"
+      return "llm"
+    }
+
+    function inferContextLength(modelId: string): number {
+      const patterns = [
+        { pattern: /32k/i, length: 32768 },
+        { pattern: /8k/i, length: 8192 },
+        { pattern: /4k/i, length: 4096 },
+        { pattern: /64k/i, length: 65536 },
+        { pattern: /128k/i, length: 128000 },
+        { pattern: /200k/i, length: 200000 },
+        { pattern: /1m/i, length: 1000000 },
+      ]
+      for (const { pattern, length } of patterns) {
+        if (pattern.test(modelId)) return length
+      }
+      return 128000
+    }
+
     for (const [providerID, provider] of Object.entries(providers)) {
       if (!isProviderAllowed(providerID)) {
         delete providers[providerID]
