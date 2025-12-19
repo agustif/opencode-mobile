@@ -703,6 +703,116 @@ export namespace Provider {
       mergeProvider(providerID, partial)
     }
 
+    // LM Studio: discover real models from local instance
+    const lmstudioConfig = config.provider?.lmstudio
+    if (lmstudioConfig && providers.lmstudio) {
+      const baseURL = lmstudioConfig.options?.baseURL || "http://127.0.0.1:1234/v1"
+      try {
+        // Use LM Studio API v0 for richer metadata
+        const apiV0URL = baseURL.replace("/v1", "/api/v0")
+        const response = await fetch(`${apiV0URL}/models`, {
+          method: "GET",
+          signal: AbortSignal.timeout(3000),
+        })
+
+        if (response.ok) {
+          const data = (await response.json()) as {
+            data?: Array<{
+              id: string
+              object: string
+              type: string // "llm", "vlm", "embeddings"
+              publisher: string
+              arch: string
+              compatibility_type: string
+              quantization: string
+              state: string // "loaded", "not-loaded"
+              max_context_length: number
+            }>
+          }
+
+          // Also get v1 data for additional fields
+          let v1Data
+          try {
+            const v1Response = await fetch(`${baseURL.replace(/\/$/, "")}/models`, {
+              method: "GET",
+              signal: AbortSignal.timeout(3000),
+            })
+
+            if (v1Response.ok) {
+              v1Data = (await v1Response.json()) as {
+                data?: Array<{ id: string; created?: number; owned_by?: string }>
+              }
+            }
+          } catch {
+            // Continue without v1 data
+          }
+
+          if (data.data && data.data.length > 0) {
+            for (const model of data.data) {
+              const v1Model = v1Data?.data?.find((m) => m.id === model.id)
+
+              if (!providers.lmstudio!.models[model.id]) {
+                providers.lmstudio!.models[model.id] = {
+                  id: model.id,
+                  providerID: "lmstudio",
+                  name: model.id,
+                  family: model.arch,
+                  release_date: "",
+                  api: {
+                    id: model.id,
+                    url: baseURL,
+                    npm: "@ai-sdk/openai-compatible",
+                  },
+                  status: "active" as const,
+                  headers: {},
+                  options: {},
+                  cost: {
+                    input: 0,
+                    output: 0,
+                    cache: {
+                      read: 0,
+                      write: 0,
+                    },
+                  },
+                  limit: {
+                    context: model.max_context_length,
+                    output: 4096,
+                  },
+                  capabilities: {
+                    temperature: true,
+                    reasoning: false,
+                    attachment: model.type === "vlm",
+                    toolcall: true,
+                    input: {
+                      text: model.type !== "embeddings",
+                      audio: false,
+                      image: model.type === "vlm",
+                      video: false,
+                      pdf: false,
+                    },
+                    output: {
+                      text: model.type !== "embeddings",
+                      audio: false,
+                      image: false,
+                      video: false,
+                      pdf: false,
+                    },
+                    interleaved: model.type === "vlm",
+                  },
+                }
+              }
+            }
+            log.info("discovered LM Studio models", { count: data.data.length })
+          }
+        }
+      } catch (error) {
+        log.debug("failed to discover LM Studio models", {
+          baseURL,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
     for (const [providerID, provider] of Object.entries(providers)) {
       if (!isProviderAllowed(providerID)) {
         delete providers[providerID]
