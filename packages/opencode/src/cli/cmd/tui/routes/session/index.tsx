@@ -71,13 +71,13 @@ import { DialogSubagent } from "./dialog-subagent.tsx"
 addDefaultParsers(parsers.parsers)
 
 class CustomSpeedScroll implements ScrollAcceleration {
-  constructor(private speed: number) {}
+  constructor(private speed: number) { }
 
   tick(_now?: number): number {
     return this.speed
   }
 
-  reset(): void {}
+  reset(): void { }
 }
 
 const context = createContext<{
@@ -119,6 +119,16 @@ export function Session() {
 
   const dimensions = useTerminalDimensions()
   const [sidebar, setSidebar] = createSignal<"show" | "hide" | "auto">(kv.get("sidebar", "auto"))
+
+  const hw = 1
+  const min = 20
+  const max = 80
+
+  function clamp(n: number) {
+    return Math.max(min, Math.min(max, n))
+  }
+
+  const [w, setW] = createSignal(clamp(kv.get("sidebar_width", 42)))
   const [conceal, setConceal] = createSignal(true)
   const [showThinking, setShowThinking] = createSignal(kv.get("thinking_visibility", true))
   const [showTimestamps, setShowTimestamps] = createSignal(kv.get("timestamps", "hide") === "show")
@@ -128,6 +138,32 @@ export function Session() {
   const [userMessageMarkdown, setUserMessageMarkdown] = createSignal(kv.get("user_message_markdown", true))
   const [diffWrapMode, setDiffWrapMode] = createSignal<"word" | "none">("word")
 
+  const [drag, setDrag] = createSignal(false)
+  const [sx, setSx] = createSignal(0)
+  const [sw, setSw] = createSignal(0)
+  const [hov, setHov] = createSignal(false)
+
+  function save() {
+    kv.set("sidebar_width", w())
+  }
+
+  function down(x: number) {
+    setDrag(true)
+    setSx(x)
+    setSw(w())
+  }
+
+  function move(x: number) {
+    if (!drag()) return
+    setW(clamp(sw() + (sx() - x)))
+  }
+
+  function up() {
+    if (!drag()) return
+    setDrag(false)
+    save()
+  }
+
   const wide = createMemo(() => dimensions().width > 120)
   const sidebarVisible = createMemo(() => {
     if (session()?.parentID) return false
@@ -135,7 +171,9 @@ export function Session() {
     if (sidebar() === "auto" && wide()) return true
     return false
   })
-  const contentWidth = createMemo(() => dimensions().width - (sidebarVisible() ? 42 : 0) - 4)
+  const contentWidth = createMemo(() => dimensions().width - (sidebarVisible() ? w() + hw : 0) - 4)
+
+  createEffect(() => !sidebarVisible() && setDrag(false))
 
   const scrollAcceleration = createMemo(() => {
     const tui = sync.data.config.tui
@@ -253,29 +291,29 @@ export function Session() {
   command.register(() => [
     ...(sync.data.config.share !== "disabled"
       ? [
-          {
-            title: "Share session",
-            value: "session.share",
-            suggested: route.type === "session",
-            keybind: "session_share" as const,
-            disabled: !!session()?.share?.url,
-            category: "Session",
-            onSelect: async (dialog: any) => {
-              await sdk.client.session
-                .share({
-                  sessionID: route.sessionID,
-                })
-                .then((res) =>
-                  Clipboard.copy(res.data!.share!.url).catch(() =>
-                    toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }),
-                  ),
-                )
-                .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
-                .catch(() => toast.show({ message: "Failed to share session", variant: "error" }))
-              dialog.clear()
-            },
+        {
+          title: "Share session",
+          value: "session.share",
+          suggested: route.type === "session",
+          keybind: "session_share" as const,
+          disabled: !!session()?.share?.url,
+          category: "Session",
+          onSelect: async (dialog: any) => {
+            await sdk.client.session
+              .share({
+                sessionID: route.sessionID,
+              })
+              .then((res) =>
+                Clipboard.copy(res.data!.share!.url).catch(() =>
+                  toast.show({ message: "Failed to copy URL to clipboard", variant: "error" }),
+                ),
+              )
+              .then(() => toast.show({ message: "Share URL copied to clipboard!", variant: "success" }))
+              .catch(() => toast.show({ message: "Failed to share session", variant: "error" }))
+            dialog.clear()
           },
-        ]
+        },
+      ]
       : []),
     {
       title: "Rename session",
@@ -371,7 +409,7 @@ export function Session() {
       category: "Session",
       onSelect: async (dialog) => {
         const status = sync.data.session_status?.[route.sessionID]
-        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => {})
+        if (status?.type !== "idle") await sdk.client.session.abort({ sessionID: route.sessionID }).catch(() => { })
         const revert = session().revert?.messageID
         const message = messages().findLast((x) => (!revert || x.id < revert) && x.role === "user")
         if (!message) return
@@ -879,7 +917,18 @@ export function Session() {
         sync,
       }}
     >
-      <box flexDirection="row">
+      <box
+        flexDirection="row"
+        onMouseDrag={(e) => {
+          move(e.x)
+        }}
+        onMouseUp={() => {
+          up()
+        }}
+        onMouseDragEnd={() => {
+          up()
+        }}
+      >
         <box flexGrow={1} paddingBottom={1} paddingTop={1} paddingLeft={2} paddingRight={2} gap={1}>
           <Show when={session()}>
             <Show when={!sidebarVisible()}>
@@ -1019,7 +1068,25 @@ export function Session() {
           <Toast />
         </box>
         <Show when={sidebarVisible()}>
-          <Sidebar sessionID={route.sessionID} />
+          <>
+            <box
+              width={hw}
+              border={["left", "right"]}
+              customBorderChars={SplitBorder.customBorderChars}
+              borderColor={drag() ? theme.borderActive : hov() ? theme.primary : theme.border}
+              onMouseOver={() => {
+                setHov(true)
+              }}
+              onMouseOut={() => {
+                setHov(false)
+              }}
+              onMouseDown={(e) => {
+                e.preventDefault()
+                down(e.x)
+              }}
+            />
+            <Sidebar sessionID={route.sessionID} width={w()} />
+          </>
         </Show>
       </box>
     </context.Provider>
@@ -1304,19 +1371,19 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
     const style: BoxProps =
       container === "block" || permission
         ? {
-            border: permissionIndex === 0 ? (["left", "right"] as const) : (["left"] as const),
-            paddingTop: 1,
-            paddingBottom: 1,
-            paddingLeft: 2,
-            marginTop: 1,
-            gap: 1,
-            backgroundColor: theme.backgroundPanel,
-            customBorderChars: SplitBorder.customBorderChars,
-            borderColor: permissionIndex === 0 ? theme.warning : theme.background,
-          }
+          border: permissionIndex === 0 ? (["left", "right"] as const) : (["left"] as const),
+          paddingTop: 1,
+          paddingBottom: 1,
+          paddingLeft: 2,
+          marginTop: 1,
+          gap: 1,
+          backgroundColor: theme.backgroundPanel,
+          customBorderChars: SplitBorder.customBorderChars,
+          borderColor: permissionIndex === 0 ? theme.warning : theme.background,
+        }
         : {
-            paddingLeft: 3,
-          }
+          paddingLeft: 3,
+        }
 
     return (
       <box
