@@ -9,15 +9,15 @@ const notes = [] as string[]
 console.log("=== publishing ===\n")
 
 if (!Script.preview) {
-  const previous = await fetch("https://registry.npmjs.org/opencode-ai/latest")
+  const previous = await fetch("https://api.github.com/repos/sst/opencode/releases/latest")
     .then((res) => {
       if (!res.ok) throw new Error(res.statusText)
       return res.json()
     })
-    .then((data: any) => data.version)
+    .then((data: any) => data.tag_name.replace(/^v/, ""))
 
   const log =
-    await $`git log v${previous}..HEAD --oneline --format="%h %s" -- packages/opencode packages/sdk packages/plugin packages/tauri packages/desktop`.text()
+    await $`git log v${previous}..HEAD --oneline --format="%h %s" -- packages/opencode packages/sdk packages/plugin packages/desktop packages/app`.text()
 
   const commits = log.split("\n").filter((line) => line && !line.match(/^\w+ (ignore:|test:|chore:|ci:)/i))
 
@@ -47,7 +47,7 @@ if (!Script.preview) {
         body: {
           model: {
             providerID: "opencode",
-            modelID: "gemini-3-flash",
+            modelID: "claude-sonnet-4-5",
           },
           parts: [
             {
@@ -64,7 +64,7 @@ if (!Script.preview) {
 
             Group the changes into these categories based on the [areas: ...] tags (omit any category with no changes):
             - **TUI**: Changes to "opencode" area (the terminal/CLI interface)
-            - **Desktop**: Changes to "desktop" or "tauri" areas (the desktop application)
+            - **Desktop**: Changes to "app" or "tauri" areas (the desktop application)
             - **SDK**: Changes to "sdk" or "plugin" areas (the SDK and plugin system)
             - **Extensions**: Changes to "extensions/zed", "extensions/vscode", or "github" areas (editor extensions and GitHub Action)
             - **Other**: Any user-facing changes that don't fit the above categories
