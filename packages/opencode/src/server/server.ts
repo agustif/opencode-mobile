@@ -47,6 +47,8 @@ import { SessionStatus } from "@/session/status"
 import { upgradeWebSocket, websocket } from "hono/bun"
 import { errors } from "./error"
 import { Pty } from "@/pty"
+import { Installation } from "@/installation"
+import { defaultServiceName, startBonjour } from "./discovery"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -96,6 +98,67 @@ export namespace Server {
         }
       })
       .use(cors())
+      .get(
+        "/health",
+        describeRoute({
+          summary: "Health check",
+          description: "Lightweight health check for discovery and monitoring.",
+          operationId: "health",
+          responses: {
+            200: {
+              description: "OK",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.object({
+                      ok: z.boolean(),
+                      version: z.string(),
+                      time: z.number(),
+                    }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          return c.json({ ok: true, version: Installation.VERSION, time: Date.now() })
+        },
+      )
+      .get(
+        "/info",
+        describeRoute({
+          summary: "Server info",
+          description: "Basic server info for clients during discovery.",
+          operationId: "info",
+          responses: {
+            200: {
+              description: "Info",
+              content: {
+                "application/json": {
+                  schema: resolver(
+                    z.object({
+                      name: z.string(),
+                      version: z.string(),
+                      baseUrl: z.string(),
+                    }),
+                  ),
+                },
+              },
+            },
+          },
+        }),
+        async (c) => {
+          const url = new URL(c.req.url)
+          url.pathname = ""
+          url.search = ""
+          return c.json({
+            name: "opencode",
+            version: Installation.VERSION,
+            baseUrl: url.toString(),
+          })
+        },
+      )
       .get(
         "/global/event",
         describeRoute({
@@ -2494,7 +2557,14 @@ export namespace Server {
     return result
   }
 
-  export function listen(opts: { port: number; hostname: string }) {
+  export function listen(opts: {
+    port: number
+    hostname: string
+    discover?: {
+      name?: string
+      txt?: Record<string, string>
+    }
+  }) {
     const server = Bun.serve({
       port: opts.port,
       hostname: opts.hostname,
@@ -2502,6 +2572,21 @@ export namespace Server {
       fetch: App().fetch,
       websocket: websocket,
     })
+    let stopDiscovery: (() => void) | undefined
+    if (opts.discover) {
+      void startBonjour({
+        name: opts.discover.name ?? defaultServiceName(),
+        port: server.port,
+        txt: opts.discover.txt ?? {},
+      }).then((handle) => {
+        stopDiscovery = handle?.stop
+      })
+    }
+    const originalStop = server.stop.bind(server)
+    server.stop = ((...args: any[]) => {
+      stopDiscovery?.()
+      return originalStop(...args)
+    }) as typeof server.stop
     return server
   }
 }

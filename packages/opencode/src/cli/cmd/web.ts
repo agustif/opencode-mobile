@@ -2,29 +2,8 @@ import { Server } from "../../server/server"
 import { UI } from "../ui"
 import { cmd } from "./cmd"
 import open from "open"
-import { networkInterfaces } from "os"
-
-function getNetworkIPs() {
-  const nets = networkInterfaces()
-  const results: string[] = []
-
-  for (const name of Object.keys(nets)) {
-    const net = nets[name]
-    if (!net) continue
-
-    for (const netInfo of net) {
-      // Skip internal and non-IPv4 addresses
-      if (netInfo.internal || netInfo.family !== "IPv4") continue
-
-      // Skip Docker bridge networks (typically 172.x.x.x)
-      if (netInfo.address.startsWith("172.")) continue
-
-      results.push(netInfo.address)
-    }
-  }
-
-  return results
-}
+import { getNetworkIPs, resolveConnectHost } from "../net"
+import { printQRCode } from "../qr"
 
 export const WebCommand = cmd({
   command: "web",
@@ -40,14 +19,37 @@ export const WebCommand = cmd({
         type: "string",
         describe: "hostname to listen on",
         default: "127.0.0.1",
+      })
+      .option("discover", {
+        type: "boolean",
+        describe: "advertise on LAN via Bonjour (mDNS)",
+      })
+      .option("name", {
+        type: "string",
+        describe: "Bonjour service name",
+      })
+      .option("qr", {
+        type: "boolean",
+        describe: "print QR code for mobile pairing",
+        default: false,
       }),
   describe: "starts a headless opencode server",
   handler: async (args) => {
     const hostname = args.hostname
     const port = args.port
+    const discover =
+      typeof args.discover === "boolean" ? args.discover : hostname !== "127.0.0.1" && hostname !== "localhost"
     const server = Server.listen({
       port,
       hostname,
+      discover: discover
+        ? {
+            name: args.name,
+            txt: {
+              path: "/",
+            },
+          }
+        : undefined,
     })
     UI.empty()
     UI.println(UI.logo("  "))
@@ -72,10 +74,24 @@ export const WebCommand = cmd({
 
       // Open localhost in browser
       open(localhostUrl.toString()).catch(() => {})
+      if (args.qr) {
+        const connectHost = resolveConnectHost(hostname)
+        const connectUrl = `http://${connectHost}:${server.port}`
+        const deepLink = `opencode://connect?url=${encodeURIComponent(connectUrl)}`
+        UI.println(UI.Style.TEXT_INFO_BOLD + "  Mobile connect:   ", UI.Style.TEXT_NORMAL, deepLink)
+        await printQRCode(deepLink)
+      }
     } else {
       const displayUrl = server.url.toString()
       UI.println(UI.Style.TEXT_INFO_BOLD + "  Web interface:    ", UI.Style.TEXT_NORMAL, displayUrl)
       open(displayUrl).catch(() => {})
+      if (args.qr) {
+        const connectHost = resolveConnectHost(hostname)
+        const connectUrl = `http://${connectHost}:${server.port}`
+        const deepLink = `opencode://connect?url=${encodeURIComponent(connectUrl)}`
+        UI.println(UI.Style.TEXT_INFO_BOLD + "  Mobile connect:   ", UI.Style.TEXT_NORMAL, deepLink)
+        await printQRCode(deepLink)
+      }
     }
 
     await new Promise(() => {})
