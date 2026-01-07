@@ -197,14 +197,27 @@ export namespace Provider {
 
       if (!profile && !awsAccessKeyId && !awsBearerToken) return { autoload: false }
 
-      const { fromNodeProviderChain } = await import(await BunProc.install("@aws-sdk/credential-providers"))
-
-      // Build credential provider options (only pass profile if specified)
-      const credentialProviderOptions = profile ? { profile } : {}
-
+      // Build provider options
       const providerOptions: AmazonBedrockProviderSettings = {
         region: defaultRegion,
-        credentialProvider: fromNodeProviderChain(credentialProviderOptions),
+      }
+
+      // If bearer token is provided, use it as apiKey (avoids credentialProvider)
+      if (awsBearerToken) {
+        providerOptions.apiKey = awsBearerToken
+      } else {
+        // Otherwise, use AWS credential provider chain
+        const mod = await import(await BunProc.install("@aws-sdk/credential-providers"))
+
+        // Handle both bundled (default export) and unbundled (named exports) modules
+        const fromNodeProviderChain = mod.default?.fromNodeProviderChain ?? mod.fromNodeProviderChain
+        if (!fromNodeProviderChain) {
+          throw new Error("fromNodeProviderChain not found in credential-providers module")
+        }
+
+        // Build credential provider options (only pass profile if specified)
+        const credentialProviderOptions = profile ? { profile } : {}
+        providerOptions.credentialProvider = fromNodeProviderChain(credentialProviderOptions)
       }
 
       // Add custom endpoint if specified (endpoint takes precedence over baseURL)
