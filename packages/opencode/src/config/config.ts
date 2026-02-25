@@ -1,10 +1,11 @@
 import { Log } from "../util/log"
 import path from "path"
+import { pathToFileURL } from "url"
 import os from "os"
 import z from "zod"
 import { Filesystem } from "../util/filesystem"
 import { ModelsDev } from "../provider/models"
-import { mergeDeep, pipe } from "remeda"
+import { mergeDeep, pipe, unique } from "remeda"
 import { Global } from "../global"
 import fs from "fs/promises"
 import { lazy } from "../util/lazy"
@@ -75,6 +76,13 @@ export namespace Config {
           stop: Instance.worktree,
         }),
       )),
+      ...(await Array.fromAsync(
+        Filesystem.up({
+          targets: [".opencode"],
+          start: Global.Path.home,
+          stop: Global.Path.home,
+        }),
+      )),
     ]
 
     if (Flag.OPENCODE_CONFIG_DIR) {
@@ -83,7 +91,7 @@ export namespace Config {
     }
 
     const promises: Promise<void>[] = []
-    for (const dir of directories) {
+    for (const dir of unique(directories)) {
       await assertValid(dir)
 
       if (dir.endsWith(".opencode") || dir === Flag.OPENCODE_CONFIG_DIR) {
@@ -210,7 +218,7 @@ export namespace Config {
         result[config.name] = parsed.data
         continue
       }
-      throw new InvalidError({ path: item }, { cause: parsed.error })
+      throw new InvalidError({ path: item, issues: parsed.error.issues }, { cause: parsed.error })
     }
     return result
   }
@@ -253,7 +261,7 @@ export namespace Config {
         result[config.name] = parsed.data
         continue
       }
-      throw new InvalidError({ path: item }, { cause: parsed.error })
+      throw new InvalidError({ path: item, issues: parsed.error.issues }, { cause: parsed.error })
     }
     return result
   }
@@ -297,7 +305,7 @@ export namespace Config {
       dot: true,
       cwd: dir,
     })) {
-      plugins.push("file://" + item)
+      plugins.push(pathToFileURL(item).href)
     }
     return plugins
   }
@@ -432,6 +440,8 @@ export namespace Config {
       session_new: z.string().optional().default("<leader>n").describe("Create a new session"),
       session_list: z.string().optional().default("<leader>l").describe("List all sessions"),
       session_timeline: z.string().optional().default("<leader>g").describe("Show session timeline"),
+      session_fork: z.string().optional().default("none").describe("Fork session from message"),
+      session_rename: z.string().optional().default("none").describe("Rename session"),
       session_share: z.string().optional().default("none").describe("Share current session"),
       session_unshare: z.string().optional().default("none").describe("Unshare current session"),
       session_interrupt: z.string().optional().default("escape").describe("Interrupt current session"),
@@ -459,6 +469,8 @@ export namespace Config {
       model_list: z.string().optional().default("<leader>m").describe("List available models"),
       model_cycle_recent: z.string().optional().default("f2").describe("Next recently used model"),
       model_cycle_recent_reverse: z.string().optional().default("shift+f2").describe("Previous recently used model"),
+      model_cycle_favorite: z.string().optional().default("none").describe("Next favorite model"),
+      model_cycle_favorite_reverse: z.string().optional().default("none").describe("Previous favorite model"),
       command_list: z.string().optional().default("ctrl+p").describe("List available commands"),
       agent_list: z.string().optional().default("<leader>a").describe("List agents"),
       agent_cycle: z.string().optional().default("tab").describe("Next agent"),
@@ -549,6 +561,7 @@ export namespace Config {
       session_child_cycle: z.string().optional().default("<leader>right").describe("Next child session"),
       session_child_cycle_reverse: z.string().optional().default("<leader>left").describe("Previous child session"),
       terminal_suspend: z.string().optional().default("ctrl+z").describe("Suspend terminal"),
+      terminal_title_toggle: z.string().optional().default("none").describe("Toggle terminal title"),
     })
     .strict()
     .meta({
@@ -667,10 +680,16 @@ export namespace Config {
         .describe("@deprecated Use `agent` field instead."),
       agent: z
         .object({
+          // primary
           plan: Agent.optional(),
           build: Agent.optional(),
+          // subagent
           general: Agent.optional(),
           explore: Agent.optional(),
+          // specialized
+          title: Agent.optional(),
+          summary: Agent.optional(),
+          compaction: Agent.optional(),
         })
         .catchall(Agent)
         .optional()
@@ -782,6 +801,7 @@ export namespace Config {
             .array(z.string())
             .optional()
             .describe("Tools that should only be available to primary agents."),
+          continue_loop_on_deny: z.boolean().optional().describe("Continue the agent loop when a tool call is denied"),
         })
         .optional(),
     })

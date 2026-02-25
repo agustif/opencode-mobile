@@ -25,6 +25,7 @@ import { Locale } from "@/util/locale"
 import { createColors, createFrames } from "../../ui/spinner.ts"
 import { useDialog } from "@tui/ui/dialog"
 import { DialogProvider as DialogProviderConnect } from "../dialog-provider"
+import { DialogAlert } from "../../ui/dialog-alert"
 import { useToast } from "../../ui/toast"
 
 export type PromptProps = {
@@ -43,6 +44,7 @@ export type PromptRef = {
   reset(): void
   blur(): void
   focus(): void
+  submit(): void
 }
 
 const PLACEHOLDERS = ["Fix a TODO in the codebase", "What is the tech stack of this project?", "Fix broken tests"]
@@ -114,7 +116,7 @@ export function Prompt(props: PromptProps) {
   const sync = useSync()
   const dialog = useDialog()
   const toast = useToast()
-  const status = createMemo(() => sync.data.session_status[props.sessionID ?? ""] ?? { type: "idle" })
+  const status = createMemo(() => sync.data.session_status?.[props.sessionID ?? ""] ?? { type: "idle" })
   const history = usePromptHistory()
   const command = useCommandDialog()
   const renderer = useRenderer()
@@ -446,11 +448,14 @@ export function Prompt(props: PromptProps) {
       })
       setStore("extmarkToPartIndex", new Map())
     },
+    submit() {
+      submit()
+    },
   })
 
   async function submit() {
     if (props.disabled) return
-    if (autocomplete.visible) return
+    if (autocomplete?.visible) return
     if (!store.prompt.input) return
     const trimmed = store.prompt.input.trim()
     if (trimmed === "exit" || trimmed === "quit" || trimmed === ":q") {
@@ -489,6 +494,9 @@ export function Prompt(props: PromptProps) {
 
     // Filter out text parts (pasted content) since they're now expanded inline
     const nonTextParts = store.prompt.parts.filter((part) => part.type !== "text")
+
+    // Capture mode before it gets reset
+    const currentMode = store.mode
 
     if (store.mode === "shell") {
       sdk.client.session.shell({
@@ -538,7 +546,10 @@ export function Prompt(props: PromptProps) {
         ],
       })
     }
-    history.append(store.prompt)
+    history.append({
+      ...store.prompt,
+      mode: currentMode,
+    })
     input.extmarks.clear()
     setStore("prompt", {
       input: "",
@@ -704,8 +715,8 @@ export function Prompt(props: PromptProps) {
           >
             <textarea
               placeholder={props.sessionID ? undefined : `Ask anything... "${PLACEHOLDERS[store.placeholder]}"`}
-              textColor={theme.text}
-              focusedTextColor={theme.text}
+              textColor={keybind.leader ? theme.textMuted : theme.text}
+              focusedTextColor={keybind.leader ? theme.textMuted : theme.text}
               minHeight={1}
               maxHeight={6}
               onContentChange={() => {
@@ -731,8 +742,12 @@ export function Prompt(props: PromptProps) {
                   return
                 }
                 if (keybind.match("app_exit", e)) {
-                  await exit()
-                  return
+                  if (store.prompt.input === "") {
+                    await exit()
+                    // Don't preventDefault - let textarea potentially handle the event
+                    e.preventDefault()
+                    return
+                  }
                 }
                 if (e.name === "!" && input.visualCursor.offset === 0) {
                   setStore("mode", "shell")
@@ -758,6 +773,7 @@ export function Prompt(props: PromptProps) {
                     if (item) {
                       input.setText(item.input)
                       setStore("prompt", item)
+                      setStore("mode", item.mode ?? "normal")
                       restoreExtmarksFromParts(item.parts)
                       e.preventDefault()
                       if (direction === -1) input.cursorOffset = 0
@@ -849,7 +865,7 @@ export function Prompt(props: PromptProps) {
               </text>
               <Show when={store.mode === "normal"}>
                 <box flexDirection="row" gap={1}>
-                  <text flexShrink={0} fg={theme.text}>
+                  <text flexShrink={0} fg={keybind.leader ? theme.textMuted : theme.text}>
                     {local.model.parsed().model}
                   </text>
                   <text fg={theme.textMuted}>{local.model.parsed().provider}</text>
@@ -864,8 +880,7 @@ export function Prompt(props: PromptProps) {
           borderColor={highlight()}
           customBorderChars={{
             ...EmptyBorder,
-            // when the background is transparent, don't draw the vertical line
-            vertical: theme.background.a != 0 ? "╹" : " ",
+            vertical: theme.backgroundElement.a !== 0 ? "╹" : " ",
           }}
         >
           <box
@@ -873,7 +888,7 @@ export function Prompt(props: PromptProps) {
             border={["bottom"]}
             borderColor={theme.backgroundElement}
             customBorderChars={
-              theme.background.a != 0
+              theme.backgroundElement.a !== 0
                 ? {
                     ...EmptyBorder,
                     horizontal: "▀",
@@ -908,8 +923,13 @@ export function Prompt(props: PromptProps) {
                       if (!r) return
                       if (r.message.includes("exceeded your current quota") && r.message.includes("gemini"))
                         return "gemini is way too hot right now"
-                      if (r.message.length > 50) return r.message.slice(0, 50) + "..."
+                      if (r.message.length > 80) return r.message.slice(0, 80) + "..."
                       return r.message
+                    })
+                    const isTruncated = createMemo(() => {
+                      const r = retry()
+                      if (!r) return false
+                      return r.message.length > 120
                     })
                     const [seconds, setSeconds] = createSignal(0)
                     onMount(() => {
@@ -922,12 +942,28 @@ export function Prompt(props: PromptProps) {
                         clearInterval(timer)
                       })
                     })
+                    const handleMessageClick = () => {
+                      const r = retry()
+                      if (!r) return
+                      if (isTruncated()) {
+                        DialogAlert.show(dialog, "Retry Error", r.message)
+                      }
+                    }
+
+                    const retryText = () => {
+                      const r = retry()
+                      if (!r) return ""
+                      const baseMessage = message()
+                      const truncatedHint = isTruncated() ? " (click to expand)" : ""
+                      const retryInfo = ` [retrying ${seconds() > 0 ? `in ${seconds()}s ` : ""}attempt #${r.attempt}]`
+                      return baseMessage + truncatedHint + retryInfo
+                    }
+
                     return (
                       <Show when={retry()}>
-                        <text fg={theme.error}>
-                          {message()} [retrying {seconds() > 0 ? `in ${seconds()}s ` : ""}
-                          attempt #{retry()!.attempt}]
-                        </text>
+                        <box onMouseUp={handleMessageClick}>
+                          <text fg={theme.error}>{retryText()}</text>
+                        </box>
                       </Show>
                     )
                   })()}
