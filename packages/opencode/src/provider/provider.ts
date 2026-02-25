@@ -392,6 +392,7 @@ export namespace Provider {
       status: z.enum(["alpha", "beta", "deprecated", "active"]),
       options: z.record(z.string(), z.any()),
       headers: z.record(z.string(), z.string()),
+      release_date: z.string(),
     })
     .meta({
       ref: "Model",
@@ -470,6 +471,7 @@ export namespace Provider {
         },
         interleaved: model.interleaved ?? false,
       },
+      release_date: model.release_date,
     }
   }
 
@@ -602,6 +604,8 @@ export namespace Provider {
             output: model.limit?.output ?? existingModel?.limit?.output ?? 0,
           },
           headers: mergeDeep(existingModel?.headers ?? {}, model.headers ?? {}),
+          family: model.family ?? existingModel?.family ?? "",
+          release_date: model.release_date ?? existingModel?.release_date ?? "",
         }
         parsed.models[modelID] = parsedModel
       }
@@ -697,6 +701,265 @@ export namespace Provider {
       if (provider.name) partial.name = provider.name
       if (provider.options) partial.options = provider.options
       mergeProvider(providerID, partial)
+    }
+
+    // LM Studio: discover real models from local instance
+    const lmstudioConfig = config.provider?.lmstudio
+    if (lmstudioConfig && providers.lmstudio) {
+      const baseURL = lmstudioConfig.options?.baseURL || "http://127.0.0.1:1234/v1"
+      try {
+        // Use LM Studio API v0 for richer metadata
+        const apiV0URL = baseURL.replace("/v1", "/api/v0")
+        const response = await fetch(`${apiV0URL}/models`, {
+          method: "GET",
+          signal: AbortSignal.timeout(3000),
+        })
+
+        if (response.ok) {
+          const data = (await response.json()) as {
+            data?: Array<{
+              id: string
+              object: string
+              type: string // "llm", "vlm", "embeddings"
+              publisher: string
+              arch: string
+              compatibility_type: string
+              quantization: string
+              state: string // "loaded", "not-loaded"
+              max_context_length: number
+            }>
+          }
+
+          // Also get v1 data for additional fields
+          let v1Data
+          try {
+            const v1Response = await fetch(`${baseURL.replace(/\/$/, "")}/models`, {
+              method: "GET",
+              signal: AbortSignal.timeout(3000),
+            })
+
+            if (v1Response.ok) {
+              v1Data = (await v1Response.json()) as {
+                data?: Array<{ id: string; created?: number; owned_by?: string }>
+              }
+            }
+          } catch {
+            // Continue without v1 data
+          }
+
+          if (data.data && data.data.length > 0) {
+            for (const model of data.data) {
+              const v1Model = v1Data?.data?.find((m) => m.id === model.id)
+
+              if (!providers.lmstudio!.models[model.id]) {
+                providers.lmstudio!.models[model.id] = {
+                  id: model.id,
+                  providerID: "lmstudio",
+                  name: model.id,
+                  family: model.arch,
+                  release_date: "",
+                  api: {
+                    id: model.id,
+                    url: baseURL,
+                    npm: "@ai-sdk/openai-compatible",
+                  },
+                  status: "active" as const,
+                  headers: {},
+                  options: {},
+                  cost: {
+                    input: 0,
+                    output: 0,
+                    cache: {
+                      read: 0,
+                      write: 0,
+                    },
+                  },
+                  limit: {
+                    context: model.max_context_length,
+                    output: 4096,
+                  },
+                  capabilities: {
+                    temperature: true,
+                    reasoning: false,
+                    attachment: model.type === "vlm",
+                    toolcall: true,
+                    input: {
+                      text: model.type !== "embeddings",
+                      audio: false,
+                      image: model.type === "vlm",
+                      video: false,
+                      pdf: false,
+                    },
+                    output: {
+                      text: model.type !== "embeddings",
+                      audio: false,
+                      image: false,
+                      video: false,
+                      pdf: false,
+                    },
+                    interleaved: model.type === "vlm",
+                  },
+                }
+              }
+            }
+            log.info("discovered LM Studio models", { count: data.data.length })
+          }
+        }
+      } catch (error) {
+        log.debug("failed to discover LM Studio models", {
+          baseURL,
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    // Generic OpenAI-compatible model discovery
+    console.log("🔍 Starting generic OpenAI-compatible model discovery")
+    for (const [providerID, provider] of Object.entries(providers)) {
+      const hasOpenAICompatibleModel = Object.values(provider.models).some(
+        (model) => model.api.npm === "@ai-sdk/openai-compatible",
+      )
+      if (!hasOpenAICompatibleModel) continue
+
+      const providerConfig = config.provider?.[providerID as keyof typeof config.provider]
+      const baseURL = providerConfig?.options?.baseURL || Object.values(provider.models)[0]?.api?.url
+      if (!baseURL) continue
+
+      console.log(`🔍 Checking ${providerID} at ${baseURL}`)
+
+      try {
+        const base = baseURL.replace(/\/$/, "")
+        let discoveredModels: any[] = []
+
+        // Try standard OpenAI /models endpoint
+        const modelsResponse = await fetch(`${base}/models`, {
+          method: "GET",
+          signal: AbortSignal.timeout(5000),
+        })
+
+        if (modelsResponse.ok) {
+          const data = await modelsResponse.json()
+
+          if (data.data && Array.isArray(data.data)) {
+            discoveredModels = data.data.map((model: any) => ({
+              id: model.id,
+              type: inferModelType(model.id),
+              context: inferContextLength(model.id),
+            }))
+          } else if (data.models && Array.isArray(data.models)) {
+            discoveredModels = data.models.map((model: any) => ({
+              id: model.name || model.model,
+              type: inferModelType(model.name || model.model),
+              context: inferContextLength(model.name || model.model),
+            }))
+          }
+        }
+
+        // Try Ollama /api/tags if /models failed
+        if (discoveredModels.length === 0) {
+          const tagsResponse = await fetch(`${base}/api/tags`, {
+            method: "GET",
+            signal: AbortSignal.timeout(5000),
+          })
+
+          if (tagsResponse.ok) {
+            const tagsData = await tagsResponse.json()
+            if (tagsData.models && Array.isArray(tagsData.models)) {
+              discoveredModels = tagsData.models.map((model: any) => ({
+                id: model.name || model.model,
+                type: inferModelType(model.name || model.model),
+                context: inferContextLength(model.name || model.model),
+              }))
+            }
+          }
+        }
+
+        // Register discovered models
+        for (const modelData of discoveredModels) {
+          if (!provider.models[modelData.id]) {
+            const isVision = /vision|vlm|multimodal|claude-3|gpt-4o/i.test(modelData.id)
+            const isReasoning = /reasoning|thinking|o1/i.test(modelData.id)
+            const isEmbedding = /embed|text-embedding|e5-/i.test(modelData.id)
+
+            provider.models[modelData.id] = {
+              id: modelData.id,
+              providerID,
+              name: modelData.id,
+              family: "",
+              release_date: "",
+              api: {
+                id: modelData.id,
+                url: baseURL,
+                npm: "@ai-sdk/openai-compatible",
+              },
+              status: "active" as const,
+              headers: {},
+              options: {},
+              cost: {
+                input: 0,
+                output: 0,
+                cache: { read: 0, write: 0 },
+              },
+              limit: {
+                context: modelData.context || inferContextLength(modelData.id),
+                output: 4096,
+              },
+              capabilities: {
+                temperature: !isEmbedding,
+                reasoning: isReasoning,
+                attachment: isVision,
+                toolcall: !isEmbedding,
+                input: {
+                  text: !isEmbedding,
+                  audio: false,
+                  image: isVision,
+                  video: false,
+                  pdf: false,
+                },
+                output: {
+                  text: !isEmbedding,
+                  audio: false,
+                  image: false,
+                  video: false,
+                  pdf: false,
+                },
+                interleaved: isVision,
+              },
+            }
+          }
+        }
+
+        if (discoveredModels.length > 0) {
+          console.log(`✅ Discovered ${discoveredModels.length} OpenAI-compatible models for ${providerID}`)
+        }
+      } catch (error) {
+        console.log(
+          `❌ Failed to discover models for ${providerID}:`,
+          error instanceof Error ? error.message : String(error),
+        )
+      }
+    }
+
+    function inferModelType(modelId: string): string {
+      if (/embed|text-embedding|e5-/i.test(modelId)) return "embeddings"
+      if (/vision|vlm|multimodal|claude-3|gpt-4o/i.test(modelId)) return "vlm"
+      return "llm"
+    }
+
+    function inferContextLength(modelId: string): number {
+      const patterns = [
+        { pattern: /32k/i, length: 32768 },
+        { pattern: /8k/i, length: 8192 },
+        { pattern: /4k/i, length: 4096 },
+        { pattern: /64k/i, length: 65536 },
+        { pattern: /128k/i, length: 128000 },
+        { pattern: /200k/i, length: 200000 },
+        { pattern: /1m/i, length: 1000000 },
+      ]
+      for (const { pattern, length } of patterns) {
+        if (pattern.test(modelId)) return length
+      }
+      return 128000
     }
 
     for (const [providerID, provider] of Object.entries(providers)) {
@@ -858,7 +1121,7 @@ export namespace Provider {
     return info
   }
 
-  export async function getLanguage(model: Model) {
+  export async function getLanguage(model: Model): Promise<LanguageModelV2> {
     const s = await state()
     const key = `${model.providerID}/${model.id}`
     if (s.models.has(key)) return s.models.get(key)!
