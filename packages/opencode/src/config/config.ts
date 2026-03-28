@@ -579,6 +579,14 @@ export namespace Config {
       whitelist: z.array(z.string()).optional(),
       blacklist: z.array(z.string()).optional(),
       models: z.record(z.string(), ModelsDev.Model.partial()).optional(),
+      healthCheck: z
+        .object({
+          url: z.string().optional().describe("Health check endpoint URL. Defaults to baseURL + /models"),
+          timeout: z.number().int().positive().default(2000).describe("Health check timeout in milliseconds"),
+          enabled: z.boolean().default(true).describe("Enable health check for this provider"),
+        })
+        .optional()
+        .describe("Health check configuration for provider connection validation"),
       options: z
         .object({
           apiKey: z.string().optional(),

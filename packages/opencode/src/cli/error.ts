@@ -19,6 +19,16 @@ export function FormatError(input: unknown) {
   if (Provider.InitError.isInstance(input)) {
     return `Failed to initialize provider "${input.data.providerID}". Check credentials and configuration.`
   }
+  if (Provider.HealthCheckError.isInstance(input)) {
+    const { providerID, baseURL, error } = input.data
+    return [
+      `Health check failed for provider "${providerID}"`,
+      baseURL ? `Endpoint: ${baseURL}` : "",
+      `Error: ${error}`,
+    ]
+      .filter(Boolean)
+      .join("\n")
+  }
   if (Config.JsonError.isInstance(input)) {
     return (
       `Config file at ${input.data.path} is not valid JSON(C)` + (input.data.message ? `: ${input.data.message}` : "")
